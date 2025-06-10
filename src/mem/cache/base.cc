@@ -137,8 +137,17 @@ BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
         name());
     warn_if(!compressor && dynamic_cast<CompressedTags*>(tags),
         "Compressed cache %s does not have a compression algorithm", name());
-    if (compressor)
+    if (compressor){
         compressor->setCache(this);
+    }
+
+        /*load fault map*/
+        static bool fault_map_loaded = false;
+        if(!fault_map_loaded&&!p.fault_file.empty()){
+            gem5::FaultManager::instance().load(p.fault_file);
+            fault_map_loaded = true;
+        }
+        DPRINTF(Cache, "Fault map loaded: %s\n", p.fault_file);
 }
 
 BaseCache::~BaseCache()

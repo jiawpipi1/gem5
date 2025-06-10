@@ -128,6 +128,7 @@ Source('pseudo_inst.cc')
 Source('syscall_emul.cc')
 Source('syscall_desc.cc')
 Source('vma.cc')
+Source('fault_manager.cc')
 
 DebugFlag('Checkpoint')
 DebugFlag('Config')

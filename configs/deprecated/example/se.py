@@ -131,6 +131,12 @@ warn(
 )
 
 parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--fault-file",
+    type=str,
+    default="",
+    help="JSON file with list of faulty cachelines",
+)
 Options.addCommonOptions(parser)
 Options.addSEOptions(parser)
 
@@ -138,6 +144,7 @@ if "--ruby" in sys.argv:
     Ruby.define_options(parser)
 
 args = parser.parse_args()
+
 
 multiprocesses = []
 numThreads = 1

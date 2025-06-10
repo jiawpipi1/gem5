@@ -168,6 +168,8 @@ class BaseCache(ClockedObject):
     # in the current cache. Typically, this would be enabled in the
     # data cache.
     write_allocator = Param.WriteAllocator(NULL, "Write allocator")
+    # add fault injection
+    fault_file = Param.String("", "Path to JSON list of faulty cachelines")
 
 
 class Cache(BaseCache):
