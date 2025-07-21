@@ -202,7 +202,7 @@ class BaseSetAssoc : public BaseTags
             DPRINTF(Cache, "candidate %p ff=%d\n", blk, blk->ffLock);
         }*/
         //free fault operations
-        /*entries.erase(
+        entries.erase(
             std::remove_if(entries.begin(), entries.end(),
                            [this](ReplaceableEntry* e) {
                                 auto blk = static_cast<CacheBlk*>(e);
@@ -210,7 +210,7 @@ class BaseSetAssoc : public BaseTags
                                     DPRINTF(Cache, "skip ff-locked blk %p\n", blk);
                                 return blk->ffLock;
                            }),
-            entries.end());*/
+            entries.end());
 
         // Check if all ways are FreeFault-locked
         /*for (const auto *e : entries) {
