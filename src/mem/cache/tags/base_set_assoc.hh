@@ -62,8 +62,9 @@
 #include "mem/cache/tags/partitioning_policies/partition_manager.hh"
 #include "mem/packet.hh"
 #include "params/BaseSetAssoc.hh"
+/*add freefault start*/
 #include "debug/Cache.hh"
-
+/*add freefault end*/
 namespace gem5
 {
 
@@ -129,8 +130,9 @@ class BaseSetAssoc : public BaseTags
     CacheBlk* accessBlock(const PacketPtr pkt, Cycles &lat) override
     {
 
-        const Addr addr = pkt->getAddr();
         CacheBlk *blk   = findBlock({addr, pkt->isSecure()});
+        /*add freefault start*/
+        const Addr addr = pkt->getAddr();
         const bool hit  = (blk != nullptr);
         /*if (blk) {
             DPRINTF(Cache, "[access] addr=%#lx set=%u  hit=%s  ffLock(before)=%d\n",
@@ -138,10 +140,12 @@ class BaseSetAssoc : public BaseTags
         } else {
             DPRINTF(Cache, "cache miss for addr %#lx\n", pkt->getAddr());
         }*/
+        /*add freefault end*/
 
         // Access all tags in parallel, hence one in each way.  The data side
         // either accesses all blocks in parallel, or one block sequentially on
         // a hit.  Sequential access with a miss doesn't access data.
+
         stats.tagAccesses += allocAssoc;
         if (sequentialAccess) {
             if (blk != nullptr) {
@@ -153,6 +157,7 @@ class BaseSetAssoc : public BaseTags
 
         // If a cache hit
         if (blk != nullptr) {
+            /*freefault start*/
             const Addr lineAddr = pkt->getAddr() & ~(blkSize - 1);
             if(gem5::FaultManager::instance().isFault(lineAddr)) {
                 // If the block is FreeFault-locked, we need to invalidate it
@@ -160,6 +165,7 @@ class BaseSetAssoc : public BaseTags
                 /*DPRINTF(Cache,
                     "[access] addr=%#lx  mark ffLock=1  tag=%#lx\n",
                     addr, blk->getTag());*/
+            /*freefault end*/
             }
             // Update number of references to accessed block
             blk->increaseRefCount();
@@ -201,7 +207,7 @@ class BaseSetAssoc : public BaseTags
             const auto *blk = static_cast<const CacheBlk*>(e);
             DPRINTF(Cache, "candidate %p ff=%d\n", blk, blk->ffLock);
         }*/
-        //free fault operations
+        /*free fault start*/
         entries.erase(
             std::remove_if(entries.begin(), entries.end(),
                            [this](ReplaceableEntry* e) {
@@ -211,6 +217,7 @@ class BaseSetAssoc : public BaseTags
                                 return blk->ffLock;
                            }),
             entries.end());
+        /*free fault end*/
 
         // Check if all ways are FreeFault-locked
         /*for (const auto *e : entries) {
@@ -249,11 +256,12 @@ class BaseSetAssoc : public BaseTags
             lineAddr, blk->getSet(), blk->getWay(),
             FaultManager::instance().isFault(lineAddr));
         */
-        if(gem5::FaultManager::instance().isFault(lineAddr)) {
+        /*freefault start*/
+        if (gem5::FaultManager::instance().isFault(lineAddr)) {
             // If the block is FreeFault-locked, we need to invalidate it
             blk->ffLock = true;
         }
-
+        /*freefault end*/
         // Increment tag counter
         stats.tagsInUse++;
 

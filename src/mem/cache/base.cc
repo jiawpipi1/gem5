@@ -141,13 +141,21 @@ BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
         compressor->setCache(this);
     }
 
-        /*load fault map*/
-        static bool fault_map_loaded = false;
-        if(!fault_map_loaded&&!p.fault_file.empty()){
-            gem5::FaultManager::instance().load(p.fault_file);
-            fault_map_loaded = true;
-        }
+    /*freefault start*/
+    /*load fault map*/
+    static bool fault_map_loaded = false;
+    if ((p.name.find("l3") != std::string::npos ||
+        p.name.find("L3") != std::string::npos) &&
+        !fault_map_loaded && !p.fault_file.empty()) {
+        gem5::FaultManager::instance().load(p.fault_file);
+        fault_map_loaded = true;
         DPRINTF(Cache, "Fault map loaded: %s\n", p.fault_file);
+    } else if (p.name.find("l3") != std::string::npos || p.name.find("L3") !=
+        std::string::npos) {
+        DPRINTF(Cache, "Fault map already loaded, skipping: %s\n",
+        p.fault_file);
+    }
+    /*freefault end*/
 }
 
 BaseCache::~BaseCache()

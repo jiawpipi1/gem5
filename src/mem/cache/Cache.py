@@ -169,7 +169,9 @@ class BaseCache(ClockedObject):
     # data cache.
     write_allocator = Param.WriteAllocator(NULL, "Write allocator")
     # add fault injection
+    # freefault start
     fault_file = Param.String("", "Path to JSON list of faulty cachelines")
+    # freefault end
 
 
 class Cache(BaseCache):
