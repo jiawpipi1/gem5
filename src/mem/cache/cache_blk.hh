@@ -108,11 +108,10 @@ class CacheBlk : public TaggedEntry
      * meaningful if the block is valid.
      */
     Tick whenReady = 0;
-
-    // free fault cacheline
+    /*add freefault start*/
     bool ffLock = false;
-    // free fault retire scrub
     bool ffRecent = false;
+    /*add freefault end*/
 
 
   protected:
