@@ -144,16 +144,25 @@ BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
     /*freefault start*/
     /*load fault map*/
     static bool fault_map_loaded = false;
-    if ((p.name.find("l3") != std::string::npos ||
-        p.name.find("L3") != std::string::npos) &&
+    if ((p.name.find("l2") != std::string::npos ||
+        p.name.find("L2") != std::string::npos) &&
         !fault_map_loaded && !p.fault_file.empty()) {
         gem5::FaultManager::instance().load(p.fault_file);
         fault_map_loaded = true;
         DPRINTF(Cache, "Fault map loaded: %s\n", p.fault_file);
-    } else if (p.name.find("l3") != std::string::npos || p.name.find("L3") !=
+    } else if (p.name.find("l2") != std::string::npos || p.name.find("L2") !=
         std::string::npos) {
+        if (!fault_map_loaded) {
+            DPRINTF(Cache, "1");
+        }
+        if (!p.fault_file.empty()) {
+             DPRINTF(Cache, "2");
+        }
         DPRINTF(Cache, "Fault map already loaded, skipping: %s\n",
         p.fault_file);
+    } else {
+        DPRINTF(Cache, "Fault map not loaded for %s, skipping: %s\n",
+        p.name, p.fault_file);
     }
     /*freefault end*/
 }

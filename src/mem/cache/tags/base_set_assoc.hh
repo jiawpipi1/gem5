@@ -130,9 +130,10 @@ class BaseSetAssoc : public BaseTags
     CacheBlk* accessBlock(const PacketPtr pkt, Cycles &lat) override
     {
 
-        CacheBlk *blk   = findBlock({addr, pkt->isSecure()});
+
         /*add freefault start*/
         const Addr addr = pkt->getAddr();
+        CacheBlk *blk   = findBlock({addr, pkt->isSecure()});
         const bool hit  = (blk != nullptr);
         /*if (blk) {
             DPRINTF(Cache, "[access] addr=%#lx set=%u  hit=%s  ffLock(before)=%d\n",
