@@ -152,12 +152,6 @@ BaseCache::BaseCache(const BaseCacheParams &p, unsigned blk_size)
         DPRINTF(Cache, "Fault map loaded: %s\n", p.fault_file);
     } else if (p.name.find("l2") != std::string::npos || p.name.find("L2") !=
         std::string::npos) {
-        if (!fault_map_loaded) {
-            DPRINTF(Cache, "1");
-        }
-        if (!p.fault_file.empty()) {
-             DPRINTF(Cache, "2");
-        }
         DPRINTF(Cache, "Fault map already loaded, skipping: %s\n",
         p.fault_file);
     } else {
