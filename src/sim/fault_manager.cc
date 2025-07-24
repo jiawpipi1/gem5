@@ -23,8 +23,8 @@ FaultManager::load(const std::string& path, Addr blk_size)
         Addr aligned = raw & ~(blkSize - 1);
         faultSet.insert(aligned);
         DPRINTF(Cache,
-            "[FaultManager] Loaded fault line address (aligned):
-            %#lx (raw: %#lx)\n",
+            "[FaultManager] Loaded fault line address (aligned):"
+            "%#lx (raw: %#lx)\n",
             aligned, raw);
     }
 

@@ -160,16 +160,18 @@ class BaseSetAssoc : public BaseTags
         if (blk != nullptr) {
             /*freefault start*/
             const Addr lineAddr = pkt->getAddr() & ~(blkSize - 1);
-            if(gem5::FaultManager::instance().isFault(lineAddr)) {
+            bool isIcache = name().find("icache") != std::string::npos;
+            if (!isIcache && gem5::FaultManager::instance().isFault(lineAddr))
+            {
                 // If the block is FreeFault-locked, we need to invalidate it
                 blk->ffLock = true;
-                DPRINTF(Cache, "[access] access1 addr=%#lx lineAddr=%#lx mark
-                    ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
+                DPRINTF(Cache, "[access] access1 addr=%#lx lineAddr=%#lx mark"
+                    "ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
                     blk->getTag(), blk);
             /*freefault end*/
             }else {
-                DPRINTF(Cache, "[access] access2 addr=%#lx lineAddr=%#lx mark
-                    ffLock=0 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
+                DPRINTF(Cache, "[access] access2 addr=%#lx lineAddr=%#lx mark"
+                    "ffLock=0 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
                     blk->getTag(), blk);
             }
             // Update number of references to accessed block
@@ -258,18 +260,18 @@ class BaseSetAssoc : public BaseTags
         const Addr lineAddr = pkt->getAddr() & ~(blkSize - 1);
 
         /*freefault start*/
-
-        if (gem5::FaultManager::instance().isFault(lineAddr)) {
+        bool isIcache = name().find("icache") != std::string::npos;
+        if (!isIcache && gem5::FaultManager::instance().isFault(lineAddr)) {
             // If the block is FreeFault-locked, we need to invalidate it
             DPRINTF(Cache,
-                "[insert] insert1 addr=%#lx lineAddr=%#lx mark ffLock=1
-                tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
+                "[insert] insert1 addr=%#lx lineAddr=%#lx mark ffLock=1"
+                "tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
                 blk->getTag(), blk);
             blk->ffLock = true;
         }else {
             DPRINTF(Cache,
-                "[insert] insert2 addr=%#lx lineAddr=%#lx mark ffLock=0
-                tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
+                "[insert] insert2 addr=%#lx lineAddr=%#lx mark ffLock=0"
+                "tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
                 blk->getTag(), blk);
             blk->ffLock = false;
         }
