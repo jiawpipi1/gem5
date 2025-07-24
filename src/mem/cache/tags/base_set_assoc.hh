@@ -163,10 +163,14 @@ class BaseSetAssoc : public BaseTags
             if(gem5::FaultManager::instance().isFault(lineAddr)) {
                 // If the block is FreeFault-locked, we need to invalidate it
                 blk->ffLock = true;
-                /*DPRINTF(Cache,
-                    "[access] addr=%#lx  mark ffLock=1  tag=%#lx\n",
-                    addr, blk->getTag());*/
+                DPRINTF(Cache, "[access] access1 addr=%#lx lineAddr=%#lx mark
+                    ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
+                    blk->getTag(), blk);
             /*freefault end*/
+            }else {
+                DPRINTF(Cache, "[access] access2 addr=%#lx lineAddr=%#lx mark
+                    ffLock=0 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
+                    blk->getTag(), blk);
             }
             // Update number of references to accessed block
             blk->increaseRefCount();
@@ -209,6 +213,7 @@ class BaseSetAssoc : public BaseTags
             DPRINTF(Cache, "candidate %p ff=%d\n", blk, blk->ffLock);
         }*/
         /*free fault start*/
+        DPRINTF(Cache, "findVictim: %zu candidates\n", entries.size());
         entries.erase(
             std::remove_if(entries.begin(), entries.end(),
                            [this](ReplaceableEntry* e) {
@@ -252,15 +257,21 @@ class BaseSetAssoc : public BaseTags
 
         const Addr lineAddr = pkt->getAddr() & ~(blkSize - 1);
 
-        /*DPRINTF(Cache,
-            "[insert] addr=%#lx set=%u way=%u ff?=%d\n",
-            lineAddr, blk->getSet(), blk->getWay(),
-            FaultManager::instance().isFault(lineAddr));
-        */
         /*freefault start*/
+
         if (gem5::FaultManager::instance().isFault(lineAddr)) {
             // If the block is FreeFault-locked, we need to invalidate it
+            DPRINTF(Cache,
+                "[insert] insert1 addr=%#lx lineAddr=%#lx mark ffLock=1
+                tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
+                blk->getTag(), blk);
             blk->ffLock = true;
+        }else {
+            DPRINTF(Cache,
+                "[insert] insert2 addr=%#lx lineAddr=%#lx mark ffLock=0
+                tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
+                blk->getTag(), blk);
+            blk->ffLock = false;
         }
         /*freefault end*/
         // Increment tag counter

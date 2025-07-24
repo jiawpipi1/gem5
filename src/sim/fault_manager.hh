@@ -11,12 +11,13 @@ class FaultManager
 {
   private:
     std::unordered_set<Addr> faultSet;
+    Addr blkSize = 64;
 
-    /* Singleton：ctor 私有 */
+    // Singleton: constructor
     FaultManager() = default;
+
   public:
-    /* 不可複製 */
-    FaultManager(const FaultManager&)            = delete;
+    FaultManager(const FaultManager&) = delete;
     FaultManager& operator=(const FaultManager&) = delete;
 
     static FaultManager& instance()
@@ -24,9 +25,14 @@ class FaultManager
         static FaultManager _inst;
         return _inst;
     }
-    void load(const std::string& path);
-    bool isFault(Addr a) const { return faultSet.count(a); }
+
+    void load(const std::string& path, Addr blk_size = 64);
+    bool isFault(Addr a) const;
+
+    void setBlockSize(Addr blk_size) { blkSize = blk_size; }
+    Addr getBlockSize() const { return blkSize; }
 };
 
 } // namespace gem5
-#endif
+
+#endif // __FAULT_MANAGER_HH__
