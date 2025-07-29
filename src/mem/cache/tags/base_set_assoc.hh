@@ -135,13 +135,6 @@ class BaseSetAssoc : public BaseTags
         const Addr addr = pkt->getAddr();
         CacheBlk *blk   = findBlock({addr, pkt->isSecure()});
         const bool hit  = (blk != nullptr);
-        /*if (blk) {
-            DPRINTF(Cache, "[access] addr=%#lx set=%u  hit=%s  ffLock(before)=%d\n",
-            addr, blk->getSet(), hit ? "Y":"N", blk ? blk->ffLock : -1);
-        } else {
-            DPRINTF(Cache, "cache miss for addr %#lx\n", pkt->getAddr());
-        }*/
-        /*add freefault end*/
 
         // Access all tags in parallel, hence one in each way.  The data side
         // either accesses all blocks in parallel, or one block sequentially on
@@ -161,19 +154,28 @@ class BaseSetAssoc : public BaseTags
             /*freefault start*/
             const Addr lineAddr = pkt->getAddr() & ~(blkSize - 1);
             bool isIcache = name().find("icache") != std::string::npos;
-            if (!isIcache && gem5::FaultManager::instance().isFault(lineAddr))
-            {
+            bool isLLC = name().find("l2") != std::string::npos;
+            if (isLLC&&!isIcache &&
+                gem5::FaultManager::instance().isFault(lineAddr)) {
                 // If the block is FreeFault-locked, we need to invalidate it
-                blk->ffLock = true;
-                DPRINTF(Cache, "[access] access1 addr=%#lx lineAddr=%#lx mark"
-                    "ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
-                    blk->getTag(), blk);
-            /*freefault end*/
+                if (blk->ffLock) {
+                    DPRINTF(Cache, "[access] already locked"
+                        "addr=%#lx lineAddr=%#lx "
+                        "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
+                        lineAddr, blk->getTag(), blk);
+                } else {
+                    blk->ffLock = true;
+                    DPRINTF(Cache, "[access] access1 addr=%#lx"
+                        "lineAddr=%#lx mark"
+                        "ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
+                        blk->getTag(), blk);
+                }
             }else {
                 DPRINTF(Cache, "[access] access2 addr=%#lx lineAddr=%#lx mark"
-                    "ffLock=0 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
-                    blk->getTag(), blk);
+                    "ffLock unchange tag=%#lx, blk%p\n", pkt->getAddr(),
+                    lineAddr, blk->getTag(), blk);
             }
+            /*freefault end*/
             // Update number of references to accessed block
             blk->increaseRefCount();
 
@@ -240,6 +242,8 @@ class BaseSetAssoc : public BaseTags
         CacheBlk* victim = entries.empty() ? nullptr :
             static_cast<CacheBlk*>(replacementPolicy->getVictim(entries));
 
+        assert(!victim->ffLock && "Evicting ffLocked block!
+        Should not happen!");
         // There is only one eviction for this replacement
         evict_blks.push_back(victim);
 
@@ -261,19 +265,28 @@ class BaseSetAssoc : public BaseTags
 
         /*freefault start*/
         bool isIcache = name().find("icache") != std::string::npos;
-        if (!isIcache && gem5::FaultManager::instance().isFault(lineAddr)) {
+        bool isLLC = name().find("l2") != std::string::npos;
+
+        if (isLLC&&!isIcache &&
+        gem5::FaultManager::instance().isFault(lineAddr)) {
             // If the block is FreeFault-locked, we need to invalidate it
-            DPRINTF(Cache,
-                "[insert] insert1 addr=%#lx lineAddr=%#lx mark ffLock=1"
-                "tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
-                blk->getTag(), blk);
-            blk->ffLock = true;
+            if (blk->ffLock) {
+                DPRINTF(Cache,
+                    "[insert] already locked addr=%#lx lineAddr=%#lx "
+                    "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
+                    lineAddr, blk->getTag(), blk);
+            } else {
+                DPRINTF(Cache,
+                    "[insert] insert1 addr=%#lx lineAddr=%#lx mark ffLock=1"
+                    "tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
+                    blk->getTag(), blk);
+                blk->ffLock = true;
+            }
         }else {
             DPRINTF(Cache,
-                "[insert] insert2 addr=%#lx lineAddr=%#lx mark ffLock=0"
+                "[insert] insert2 addr=%#lx lineAddr=%#lx ffLock unchange"
                 "tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
                 blk->getTag(), blk);
-            blk->ffLock = false;
         }
         /*freefault end*/
         // Increment tag counter

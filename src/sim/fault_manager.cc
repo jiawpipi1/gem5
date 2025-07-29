@@ -41,4 +41,17 @@ FaultManager::isFault(Addr a) const
     return result;
 }
 
+void
+FaultManager::markFault(Addr a)
+{
+    Addr aligned = a & ~(blkSize - 1);
+    if (faultSet.count(aligned) == 0) {
+        faultSet.insert(aligned);
+        DPRINTF(Cache,
+            "[FaultManager] Dynamically marked fault at %#lx (aligned)\n",
+            aligned);
+    }
+}
+
+
 } // namespace gem5

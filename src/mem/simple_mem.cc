@@ -42,7 +42,9 @@
 
 #include "base/random.hh"
 #include "base/trace.hh"
+#include "debug/Cache.hh"
 #include "debug/Drain.hh"
+#include "sim/fault_manager.hh"
 
 namespace gem5
 {
@@ -77,7 +79,6 @@ SimpleMemory::recvAtomic(PacketPtr pkt)
 {
     panic_if(pkt->cacheResponding(), "Should not see packets where cache "
              "is responding");
-
     access(pkt);
     return getLatency();
 }
@@ -163,6 +164,7 @@ SimpleMemory::recvTimingReq(PacketPtr pkt)
 
     // go ahead and deal with the packet and put the response in the
     // queue if there is one
+
     bool needsResponse = pkt->needsResponse();
     recvAtomic(pkt);
     // turn packet around to go back to requestor if response expected

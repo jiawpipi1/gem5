@@ -37,10 +37,10 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 #include "mem/mem_ctrl.hh"
 
 #include "base/trace.hh"
+#include "debug/Cache.hh"
 #include "debug/DRAM.hh"
 #include "debug/Drain.hh"
 #include "debug/MemCtrl.hh"
@@ -49,6 +49,7 @@
 #include "mem/dram_interface.hh"
 #include "mem/mem_interface.hh"
 #include "mem/nvm_interface.hh"
+#include "sim/fault_manager.hh"
 #include "sim/system.hh"
 
 namespace gem5
@@ -415,6 +416,26 @@ MemCtrl::recvTimingReq(PacketPtr pkt)
 
     panic_if(!(pkt->isRead() || pkt->isWrite()),
              "Should only see read and writes at memory controller\n");
+    /*freefault start*/
+    if (pkt->isRead()) {
+        DPRINTF(Cache, "[Inject] In the function");
+        Addr lineAddr = pkt->getAddr() & ~(64 - 1); // cacheline aligned
+        if (gem5::FaultManager::instance().isFault(lineAddr)) {
+            DPRINTF(Cache, "[FreeFault][VERIFY] ERROR: Accessed DRAM"
+            "for locked line %#lx\n", lineAddr);
+        } //make sure that if it's locked we won't access it again
+        if (random() % 10 == 0) {
+            gem5::FaultManager::instance().markFault(lineAddr);
+            DPRINTF(Cache, "[Inject] Injected DRAM fault at %#lx\n", lineAddr);
+        } else {
+            DPRINTF(Cache, "[Inject] No fault injected for"
+                "addr=%#lx\n", pkt->getAddr());
+        }
+    }else {
+        DPRINTF(Cache, "[Inject] Not a read, no fault"
+        "injected for addr=%#lx\n", pkt->getAddr());
+    }
+    /*freefault end*/
 
     // Calc avg gap between requests
     if (prevArrival != 0) {

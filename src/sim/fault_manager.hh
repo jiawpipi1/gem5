@@ -26,6 +26,7 @@ class FaultManager
         return _inst;
     }
 
+    void markFault(Addr a);
     void load(const std::string& path, Addr blk_size = 64);
     bool isFault(Addr a) const;
 
