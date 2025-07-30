@@ -155,21 +155,19 @@ class BaseSetAssoc : public BaseTags
             const Addr lineAddr = pkt->getAddr() & ~(blkSize - 1);
             bool isIcache = name().find("icache") != std::string::npos;
             bool isLLC = name().find("l2") != std::string::npos;
-            if (isLLC&&!isIcache &&
-                gem5::FaultManager::instance().isFault(lineAddr)) {
-                // If the block is FreeFault-locked, we need to invalidate it
-                if (blk->ffLock) {
-                    DPRINTF(Cache, "[access] already locked"
+            if (blk->ffLock) {
+                DPRINTF(Cache, "[access] already locked"
                         "addr=%#lx lineAddr=%#lx "
                         "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
                         lineAddr, blk->getTag(), blk);
-                } else {
-                    blk->ffLock = true;
-                    DPRINTF(Cache, "[access] access1 addr=%#lx"
-                        "lineAddr=%#lx mark"
-                        "ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
-                        blk->getTag(), blk);
-                }
+            } else if (isLLC&&!isIcache &&
+                gem5::FaultManager::instance().isFault(lineAddr)) {
+                // If the block is FreeFault-locked, we need to invalidate it
+                blk->ffLock = true;
+                DPRINTF(Cache, "[access] access1 addr=%#lx"
+                    "lineAddr=%#lx mark"
+                    "ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
+                    blk->getTag(), blk);
             }else {
                 DPRINTF(Cache, "[access] access2 addr=%#lx lineAddr=%#lx mark"
                     "ffLock unchange tag=%#lx, blk%p\n", pkt->getAddr(),
@@ -242,8 +240,8 @@ class BaseSetAssoc : public BaseTags
         CacheBlk* victim = entries.empty() ? nullptr :
             static_cast<CacheBlk*>(replacementPolicy->getVictim(entries));
 
-        assert(!victim->ffLock && "Evicting ffLocked block!
-        Should not happen!");
+        assert(!victim->ffLock && "Evicting ffLocked block!"
+        "Should not happen!");
         // There is only one eviction for this replacement
         evict_blks.push_back(victim);
 
@@ -267,22 +265,18 @@ class BaseSetAssoc : public BaseTags
         bool isIcache = name().find("icache") != std::string::npos;
         bool isLLC = name().find("l2") != std::string::npos;
 
-        if (isLLC&&!isIcache &&
-        gem5::FaultManager::instance().isFault(lineAddr)) {
-            // If the block is FreeFault-locked, we need to invalidate it
-            if (blk->ffLock) {
-                DPRINTF(Cache,
-                    "[insert] already locked addr=%#lx lineAddr=%#lx "
+        if (blk->ffLock) {
+            DPRINTF(Cache, "[insert] already locked addr=%#lx lineAddr=%#lx "
                     "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
                     lineAddr, blk->getTag(), blk);
-            } else {
-                DPRINTF(Cache,
-                    "[insert] insert1 addr=%#lx lineAddr=%#lx mark ffLock=1"
-                    "tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
-                    blk->getTag(), blk);
-                blk->ffLock = true;
-            }
-        }else {
+        } else if (isLLC&&!isIcache &&
+            gem5::FaultManager::instance().isFault(lineAddr)) {
+            DPRINTF(Cache,
+                "[insert] insert1 addr=%#lx lineAddr=%#lx mark ffLock=1"
+                "tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
+                blk->getTag(), blk);
+            blk->ffLock = true;
+        } else {
             DPRINTF(Cache,
                 "[insert] insert2 addr=%#lx lineAddr=%#lx ffLock unchange"
                 "tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
