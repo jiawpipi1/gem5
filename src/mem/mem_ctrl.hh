@@ -51,10 +51,11 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
 #include "base/callback.hh"
 #include "base/statistics.hh"
 #include "enums/MemSched.hh"
+#include "mem/cache/tags/base.hh"
+#include "mem/cache/tags/base_set_assoc.hh"
 #include "mem/qos/mem_ctrl.hh"
 #include "mem/qport.hh"
 #include "params/MemCtrl.hh"
@@ -246,7 +247,14 @@ typedef std::deque<MemPacket*> MemPacketQueue;
 class MemCtrl : public qos::MemCtrl
 {
   protected:
+  /*freefault start*/
+    EventFunctionWrapper scrubEvent;
+    void scrubFreeFaultBlocks();
+    Tick scrubPeriod = 10000000;
+    BaseSetAssoc* l2Tags = nullptr;
+    void setL2Tags(BaseSetAssoc* tags) { l2Tags = tags; }
 
+  /*freefault end*/
     // For now, make use of a queued response port to avoid dealing with
     // flow control for the responses being sent back
     class MemoryPort : public QueuedResponsePort

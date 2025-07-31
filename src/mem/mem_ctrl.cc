@@ -46,6 +46,8 @@
 #include "debug/MemCtrl.hh"
 #include "debug/NVM.hh"
 #include "debug/QOS.hh"
+#include "mem/cache/tags/base.hh"
+#include "mem/cache/tags/base_set_assoc.hh"
 #include "mem/dram_interface.hh"
 #include "mem/mem_interface.hh"
 #include "mem/nvm_interface.hh"
@@ -66,6 +68,11 @@ MemCtrl::MemCtrl(const MemCtrlParams &p) :
                          respondEvent, nextReqEvent, retryWrReq);}, name()),
     respondEvent([this] {processRespondEvent(dram, respQueue,
                          respondEvent, retryRdReq); }, name()),
+    /*freefault start*/
+    scrubEvent([this] {
+        scrubFreeFaultBlocks();
+    }, name() + ".scrubEvent", false, Event::Default_Pri),
+    /*freefault end*/
     dram(p.dram),
     readBufferSize(dram->readBufferSize),
     writeBufferSize(dram->writeBufferSize),
@@ -120,6 +127,13 @@ MemCtrl::startup()
         // start of simulation
         dram->nextBurstAt = curTick() + dram->commandOffset();
     }
+    /*freefault start*/
+    if (!scrubEvent.scheduled()) {
+        schedule(scrubEvent, curTick() + scrubPeriod);
+        DPRINTF(Cache, "[Scrub] Scheduled scrub event"
+            "at tick %llu\n", curTick() + scrubPeriod);
+    }
+    /*freefault end*/
 }
 
 Tick
@@ -1559,6 +1573,44 @@ MemCtrl::MemoryPort::disableSanityCheck()
 {
     queue.disableSanityCheck();
 }
+
+/*freefault start*/
+void MemCtrl::scrubFreeFaultBlocks()
+{
+    DPRINTF(Cache, "[Scrub] FreeFault scrubber triggered"
+         "at tick %llu\n", curTick());
+    DPRINTF(Cache, "[Scrub] l2Tags pointer = %p\n", l2Tags);
+    if (!l2Tags) {
+        warn("FreeFault scrubber: l2Tags not set! Skipping scrub.\n");
+        return;
+    }
+
+    unsigned offsetBits = floorLog2(system()->cacheLineSize());
+
+    for (auto& blk_const : l2Tags->getAllBlocks()) {
+        auto& blk = const_cast<CacheBlk&>(blk_const);
+        DPRINTF(Cache, "[Scrub] Checking block %#lx\n", blk.getTag()
+            << offsetBits);
+
+        if (blk.ffLock) {
+            DPRINTF(Cache, "[Scrub] Locked %#lx: checking for fault\n",
+                blk.getTag() << offsetBits);
+            Addr addr = blk.getTag() << offsetBits;
+            if (!gem5::FaultManager::instance().simulateDramReadFault(addr)) {
+                blk.ffLock = false;
+                gem5::FaultManager::instance().unmarkFault(addr);
+                DPRINTF(Cache, "[Scrub] Unlocked %#lx: fault disappeared\n"
+                    , addr);
+            }
+        }
+    }
+
+
+    schedule(scrubEvent, curTick() + scrubPeriod);
+}
+
+
+/*freefault end*/
 
 } // namespace memory
 } // namespace gem5

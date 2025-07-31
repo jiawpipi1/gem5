@@ -91,6 +91,10 @@ class BaseSetAssoc : public BaseTags
     replacement_policy::Base *replacementPolicy;
 
   public:
+    /*freefault start*/
+    const std::vector<CacheBlk>& getAllBlocks() const { return blks; }
+    /*freefault end*/
+
     /** Convenience typedef. */
      typedef BaseSetAssocParams Params;
 

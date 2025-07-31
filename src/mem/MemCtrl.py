@@ -101,6 +101,9 @@ class MemCtrl(QoSMemCtrl):
 
     command_window = Param.Latency("10ns", "Static backend latency")
     disable_sanity_check = Param.Bool(False, "Disable port resp Q size check")
+    # freefault start
+    l2Tags = Param.BaseSetAssoc(NULL, "Pointer to L2 tag store")
+    # freefault end
 
 
 add_citation(

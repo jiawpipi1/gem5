@@ -27,8 +27,12 @@ class FaultManager
     }
 
     void markFault(Addr a);
+    void unmarkFault(Addr a);
     void load(const std::string& path, Addr blk_size = 64);
     bool isFault(Addr a) const;
+    bool simulateDramReadFault(Addr a);
+
+
 
     void setBlockSize(Addr blk_size) { blkSize = blk_size; }
     Addr getBlockSize() const { return blkSize; }

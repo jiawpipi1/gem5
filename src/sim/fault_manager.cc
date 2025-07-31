@@ -53,5 +53,26 @@ FaultManager::markFault(Addr a)
     }
 }
 
+void FaultManager::unmarkFault(Addr a)
+{
+    Addr aligned = a & ~(blkSize - 1);
+    if (faultSet.erase(aligned)) {
+        DPRINTF(Cache, "[FaultManager] Unmarked fault at %#lx\n", aligned);
+    }
+}
+
+bool FaultManager::simulateDramReadFault(Addr a)
+{
+    Addr aligned = a & ~(blkSize - 1);
+    if (faultSet.count(aligned) == 0)
+        return false;
+    if (random() % 2 == 0) { // 50% chance recovered
+        DPRINTF(Cache, "[FaultManager] Simulated fault at %#lx"
+            "disappeared\n", aligned);
+        return false;
+    }
+
+    return true;
+}
 
 } // namespace gem5

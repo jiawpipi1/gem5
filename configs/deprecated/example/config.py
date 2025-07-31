@@ -310,4 +310,11 @@ if args.wait_gdb:
     system.workload.wait_for_remote_gdb = True
 
 root = Root(full_system=False, system=system)
+print("system.l2.tags =", system.l2.tags)
+print("type =", type(system.l2.tags))
+
+if hasattr(system, "l2"):
+    system.mem_ctrls[0].params["l2Tags"] = system.l2.tags
+
+
 Simulation.run(args, root, system, FutureClass)
