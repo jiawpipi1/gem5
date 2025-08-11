@@ -1559,6 +1559,28 @@ MemCtrl::MemoryPort::disableSanityCheck()
 {
     queue.disableSanityCheck();
 }
+void MemCtrl::scrubFreeFaultBlocks()
+{
+    DPRINTF(Cache, "[Scrub] FreeFault scrubber triggered at tick %llu\n",
+        curTick());
+
+    for (Addr addr = 0; addr < dramSize; addr += 64) {
+        if (FaultManager::instance().wasRetiredThisInterval(addr)) {
+            bool stillFaulty = FaultManager::instance().isFault(addr);
+            if (!stillFaulty) {
+                tags->clearFFLock(addr);
+                DPRINTF(Cache, "[Scrub] SOFT fault cleared, unlock addr="
+                    "%#lx\n", addr);
+            } else {
+                tags->promoteFFLock(addr);
+                DPRINTF(Cache, "[Scrub] HARD fault confirmed, promote addr="
+                    "%#lx\n", addr);
+            }
+        }
+    }
+
+    FaultManager::instance().resetScrubWindow();
+}
 
 } // namespace memory
 } // namespace gem5
