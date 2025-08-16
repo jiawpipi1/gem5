@@ -159,7 +159,26 @@ class BaseSetAssoc : public BaseTags
             const Addr lineAddr = pkt->getAddr() & ~(blkSize - 1);
             bool isIcache = name().find("icache") != std::string::npos;
             bool isLLC = name().find("l2") != std::string::npos;
-            if (blk->ffLock) {
+            if (blk->ffLock &&
+                !gem5::FaultManager::instance().isPermanentFault(lineAddr)
+                && !blk->ffway1){
+                DPRINTF(Cache, "[access] lock it as permamnent fault"
+                        "addr=%#lx lineAddr=%#lx "
+                        "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
+                        lineAddr, blk->getTag(), blk);
+                blk->ffLock = true;
+                blk->ffway0 = false;
+                blk->ffway1 = true;
+            } else if (blk->ffLock &&
+                !gem5::FaultManager::instance().isFault(lineAddr)){
+                DPRINTF(Cache, "[access] unlock time"
+                        "addr=%#lx lineAddr=%#lx "
+                        "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
+                        lineAddr, blk->getTag(), blk);
+                blk->ffLock = false;
+                blk->ffway0 = false;
+                blk->ffway1 = false;
+            } else if (blk->ffLock) {
                 DPRINTF(Cache, "[access] already locked"
                         "addr=%#lx lineAddr=%#lx "
                         "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
@@ -167,12 +186,24 @@ class BaseSetAssoc : public BaseTags
             } else if (isLLC&&!isIcache &&
                 gem5::FaultManager::instance().isFault(lineAddr)) {
                 // If the block is FreeFault-locked, we need to invalidate it
-                blk->ffLock = true;
-                DPRINTF(Cache, "[access] access1 addr=%#lx"
-                    "lineAddr=%#lx mark"
-                    "ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
-                    blk->getTag(), blk);
-            }else {
+                if (gem5::FaultManager::instance().isPermanentFault(lineAddr))
+                {
+                    DPRINTF(Cache, "[access] 1st mark as permanant addr=%#lx"
+                        "lineAddr=%#lx mark ffLock=1 tag=%#lx, blk%p\n",
+                        pkt->getAddr(), lineAddr, blk->getTag(), blk);
+                    blk->ffLock = true;
+                    blk->ffway0 = false;
+                    blk->ffway1 = true;
+                } else {
+                    DPRINTF(Cache, "[access] mark as temporal fault addr=%#lx"
+                        "lineAddr=%#lx mark"
+                        "ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
+                        blk->getTag(), blk);
+                    blk->ffLock = true;
+                    blk->ffway0 = true;
+                    blk->ffway1 = false;
+                }
+            } else {
                 DPRINTF(Cache, "[access] access2 addr=%#lx lineAddr=%#lx mark"
                     "ffLock unchange tag=%#lx, blk%p\n", pkt->getAddr(),
                     lineAddr, blk->getTag(), blk);
@@ -230,16 +261,6 @@ class BaseSetAssoc : public BaseTags
                            }),
             entries.end());
         /*free fault end*/
-
-        // Check if all ways are FreeFault-locked
-        /*for (const auto *e : entries) {
-            const auto *blk = static_cast<const CacheBlk*>(e);
-            DPRINTF(Cache, "candidate %p ff=%d\n", blk, blk->ffLock);
-        }
-
-        if (entries.empty()) {
-            panic("All ways are FreeFault-locked!\n");
-        }*/
         // Choose replacement victim from replacement candidates
         CacheBlk* victim = entries.empty() ? nullptr :
             static_cast<CacheBlk*>(replacementPolicy->getVictim(entries));
@@ -268,18 +289,47 @@ class BaseSetAssoc : public BaseTags
         /*freefault start*/
         bool isIcache = name().find("icache") != std::string::npos;
         bool isLLC = name().find("l2") != std::string::npos;
-
-        if (blk->ffLock) {
+        if (blk->ffLock &&
+            !gem5::FaultManager::instance().isPermanentFault(lineAddr)
+            && !blk->ffway1){
+            DPRINTF(Cache, "[insert] lock it as permamnent fault"
+                    "addr=%#lx lineAddr=%#lx "
+                    "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
+                    lineAddr, blk->getTag(), blk);
+            blk->ffLock = true;
+            blk->ffway0 = false;
+            blk->ffway1 = true;
+        } else if (blk->ffLock &&
+            !gem5::FaultManager::instance().isFault(lineAddr)){
+            DPRINTF(Cache, "[insert] unlock time"
+                    "addr=%#lx lineAddr=%#lx "
+                    "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
+                    lineAddr, blk->getTag(), blk);
+            blk->ffLock = false;
+            blk->ffway0 = false;
+            blk->ffway1 = false;
+        } else if (blk->ffLock) {
             DPRINTF(Cache, "[insert] already locked addr=%#lx lineAddr=%#lx "
                     "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
                     lineAddr, blk->getTag(), blk);
         } else if (isLLC&&!isIcache &&
             gem5::FaultManager::instance().isFault(lineAddr)) {
-            DPRINTF(Cache,
-                "[insert] insert1 addr=%#lx lineAddr=%#lx mark ffLock=1"
-                "tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
+            if (gem5::FaultManager::instance().isPermanentFault(lineAddr)) {
+                DPRINTF(Cache, "[insert] 1st mark as permanant addr=%#lx"
+                        "lineAddr=%#lx mark ffLock=1 tag=%#lx, blk%p\n",
+                        pkt->getAddr(), lineAddr, blk->getTag(), blk);
+                blk->ffLock = true;
+                blk->ffway0 = false;
+                blk->ffway1 = true;
+            } else {
+            DPRINTF(Cache, "[insert] mark as temporal fault addr=%#lx"
+                "lineAddr=%#lx mark"
+                "ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
                 blk->getTag(), blk);
-            blk->ffLock = true;
+                blk->ffLock = true;
+                blk->ffway0 = true;
+                blk->ffway1 = false;
+            }
         } else {
             DPRINTF(Cache,
                 "[insert] insert2 addr=%#lx lineAddr=%#lx ffLock unchange"

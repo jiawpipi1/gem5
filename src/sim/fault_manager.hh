@@ -11,6 +11,7 @@ class FaultManager
 {
   private:
     std::unordered_set<Addr> faultSet;
+    std::unordered_set<Addr> permanentFaultSet;
     Addr blkSize = 64;
 
     // Singleton: constructor
@@ -27,10 +28,12 @@ class FaultManager
     }
 
     void markFault(Addr a);
+    void markPermanentFault(Addr a);
     void unmarkFault(Addr a);
     void load(const std::string& path, Addr blk_size = 64);
     bool isFault(Addr a) const;
     bool simulateDramReadFault(Addr a);
+    bool isPermanentFault(Addr a) const;
 
 
 

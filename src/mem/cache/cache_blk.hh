@@ -110,7 +110,8 @@ class CacheBlk : public TaggedEntry
     Tick whenReady = 0;
     /*add freefault start*/
     bool ffLock = false;
-    bool ffRecent = false;
+    bool ffway0 = false;
+    bool ffway1 = false;
     /*add freefault end*/
 
 

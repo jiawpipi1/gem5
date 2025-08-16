@@ -105,6 +105,7 @@ Source('htm.cc')
 Source('serial_link.cc')
 Source('mem_delay.cc')
 Source('port_terminator.cc')
+Source('freefault/MeET.cc', tags='mem')
 
 GTest('backdoor_manager.test', 'backdoor_manager.test.cc',
       'backdoor_manager.cc', with_tag('gem5_trace'))

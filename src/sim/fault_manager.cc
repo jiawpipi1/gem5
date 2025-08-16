@@ -41,6 +41,16 @@ FaultManager::isFault(Addr a) const
     return result;
 }
 
+bool
+FaultManager::isPermanentFault(Addr a) const
+{
+    Addr aligned = a & ~(blkSize - 1);
+    bool result = permanentFaultSet.count(aligned) > 0;
+    DPRINTF(Cache, "[FaultManager] Check addr=%#lx aligned=%#lx => %s\n",
+            a, aligned, result ? "Permanent FAULT" : "OK");
+    return result;
+}
+
 void
 FaultManager::markFault(Addr a)
 {
@@ -49,6 +59,17 @@ FaultManager::markFault(Addr a)
         faultSet.insert(aligned);
         DPRINTF(Cache,
             "[FaultManager] Dynamically marked fault at %#lx (aligned)\n",
+            aligned);
+    }
+}
+void
+FaultManager::markPermanentFault(Addr a)
+{
+    Addr aligned = a & ~(blkSize - 1);
+    if (permanentFaultSet.count(aligned) == 0) {
+        permanentFaultSet.insert(aligned);
+        DPRINTF(Cache,
+            "[FaultManager] Dynamically marked permanentfault at %#lx (aligned)\n",
             aligned);
     }
 }

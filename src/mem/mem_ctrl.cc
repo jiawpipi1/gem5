@@ -53,6 +53,7 @@
 #include "mem/nvm_interface.hh"
 #include "sim/fault_manager.hh"
 #include "sim/system.hh"
+#include "mem/freefault/MeET.hh"
 
 namespace gem5
 {
@@ -69,9 +70,11 @@ MemCtrl::MemCtrl(const MemCtrlParams &p) :
     respondEvent([this] {processRespondEvent(dram, respQueue,
                          respondEvent, retryRdReq); }, name()),
     /*freefault start*/
-    scrubEvent([this] {
-        scrubFreeFaultBlocks();
-    }, name() + ".scrubEvent", false, Event::Default_Pri),
+    scrubEvent([this] { scrubFreeFaultBlocks(); },
+                name() + ".scrubEvent"),
+    meetIntervalEvent([this]{ onMeetIntervalTick(); },
+                        name() + ".meetIntervalEvent"),
+
     /*freefault end*/
     dram(p.dram),
     readBufferSize(dram->readBufferSize),
@@ -102,6 +105,17 @@ MemCtrl::MemCtrl(const MemCtrlParams &p) :
     if (p.disable_sanity_check) {
         port.disableSanityCheck();
     }
+    /* freefault start */
+    MeET::Params mp;
+    mp.cacheLineBytes      = 64;
+    mp.numChips            = 8;
+    mp.chipInterleaveBytes = 8;
+    mp.retireThreshold     = 16;
+    mp.intervalTicks       = (Tick)5e5;
+
+    meet = new MeET(this, mp);
+    meetIntervalPeriod = meet->getParams().intervalTicks;
+    /* freefault end */
 }
 
 void
@@ -128,11 +142,15 @@ MemCtrl::startup()
         dram->nextBurstAt = curTick() + dram->commandOffset();
     }
     /*freefault start*/
-    if (!scrubEvent.scheduled()) {
-        schedule(scrubEvent, curTick() + scrubPeriod);
-        DPRINTF(Cache, "[Scrub] Scheduled scrub event"
-            "at tick %llu\n", curTick() + scrubPeriod);
+    if (meet) {
+        meet->startInterval();
+        if (!meetIntervalEvent.scheduled()) {
+            schedule(meetIntervalEvent, curTick() + meetIntervalPeriod);
+        }
+        DPRINTF(Cache, "[MeET] startup: start interval no=%lu, next tick at %lu (period=%lu)\n",
+                        meet->intervalNo(), curTick() + meetIntervalPeriod, meetIntervalPeriod);
     }
+
     /*freefault end*/
 }
 
@@ -432,7 +450,7 @@ MemCtrl::recvTimingReq(PacketPtr pkt)
              "Should only see read and writes at memory controller\n");
     /*freefault start*/
     if (pkt->isRead()) {
-        DPRINTF(Cache, "[Inject] In the function");
+        DPRINTF(Cache, "[Inject] In the function\n");
         Addr lineAddr = pkt->getAddr() & ~(64 - 1); // cacheline aligned
         if (gem5::FaultManager::instance().isFault(lineAddr)) {
             DPRINTF(Cache, "[FreeFault][VERIFY] ERROR: Accessed DRAM"
@@ -441,6 +459,7 @@ MemCtrl::recvTimingReq(PacketPtr pkt)
         if (random() % 10 == 0) {
             gem5::FaultManager::instance().markFault(lineAddr);
             DPRINTF(Cache, "[Inject] Injected DRAM fault at %#lx\n", lineAddr);
+            meet->onCorrectableError(lineAddr);
         } else {
             DPRINTF(Cache, "[Inject] No fault injected for"
                 "addr=%#lx\n", pkt->getAddr());
@@ -1496,7 +1515,12 @@ MemCtrl::drainResume()
         // not cause issues with KVM
         dram->suspend();
     }
-
+    /*freefault start*/
+    // for resume
+    if (meet && !meetIntervalEvent.scheduled()) {
+        schedule(meetIntervalEvent, curTick() + meetIntervalPeriod);
+    }
+    /*freefault end*/
     // update the mode
     isTimingMode = system()->isTimingMode();
 }
@@ -1574,7 +1598,7 @@ MemCtrl::MemoryPort::disableSanityCheck()
     queue.disableSanityCheck();
 }
 
-/*freefault start*/
+/*freefault start
 void MemCtrl::scrubFreeFaultBlocks()
 {
     DPRINTF(Cache, "[Scrub] FreeFault scrubber triggered"
@@ -1608,7 +1632,41 @@ void MemCtrl::scrubFreeFaultBlocks()
 
     schedule(scrubEvent, curTick() + scrubPeriod);
 }
+*/
+void MemCtrl::onMeetIntervalTick() {
+    meet->endInterval();
+    meet->startInterval();
+    schedule(meetIntervalEvent, curTick() + meetIntervalPeriod);
+    DPRINTF(Cache, "[MeET] interval tick at %lu ¡÷ next at %lu\n",
+                    curTick(), curTick() + meetIntervalPeriod);
+}
 
+void
+MemCtrl::triggerFreeFaultScrubNow()
+{
+    if (!scrubEvent.scheduled()) {
+        schedule(scrubEvent, curTick() + 1);
+        DPRINTF(Cache, "[MeET] request scrub ¡÷ scheduled at %lu\n", curTick() + 1);
+    } else {
+        DPRINTF(Cache, "[MeET] request scrub ignored (already scheduled)\n");
+    }
+}
+
+void
+MemCtrl::scrubFreeFaultBlocks()
+{
+    DPRINTF(Cache, "[Scrub] start at %lu\n", curTick());
+
+    // TODO: Your scan/judgment:
+    // - Reproduce the error ¡÷ FaultManager.markPermanentFault(addr)
+    // - Not reproduced ¡÷ FaultManager.unmarkFault(addr)
+    // - New error ¡÷ FaultManager.markFault(addr); meet->onCorrectableError(addr);
+    DPRINTF(Cache, "[Scrub] tototototot");
+    meet->clearScrubPending();
+    meet->clearRecentErrorLines();
+
+    DPRINTF(Cache, "[Scrub] end at %lu\n", curTick());
+}
 
 /*freefault end*/
 

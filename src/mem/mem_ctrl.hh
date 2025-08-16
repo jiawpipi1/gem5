@@ -60,6 +60,7 @@
 #include "mem/qport.hh"
 #include "params/MemCtrl.hh"
 #include "sim/eventq.hh"
+#include "mem/freefault/MeET.hh"
 
 namespace gem5
 {
@@ -253,6 +254,11 @@ class MemCtrl : public qos::MemCtrl
     Tick scrubPeriod = 10000000;
     BaseSetAssoc* l2Tags = nullptr;
     void setL2Tags(BaseSetAssoc* tags) { l2Tags = tags; }
+
+    MeET* meet = nullptr;
+    EventFunctionWrapper meetIntervalEvent;
+    Tick meetIntervalPeriod = 0;
+
 
   /*freefault end*/
     // For now, make use of a queued response port to avoid dealing with
@@ -684,6 +690,11 @@ class MemCtrl : public qos::MemCtrl
   public:
 
     MemCtrl(const MemCtrlParams &p);
+
+    /*freefault start*/
+    void onMeetIntervalTick();
+    void triggerFreeFaultScrubNow();
+    /*freefault end*/
 
     /**
      * Ensure that all interfaced have drained commands
