@@ -113,6 +113,15 @@ MemCtrl::MemCtrl(const MemCtrlParams &p) :
     mp.retireThreshold     = p.freefault_retire_threshold;
     mp.intervalTicks       = p.freefault_interval;
 
+    scrubCostFull        = p.ff_scrub_cost_full;
+    scrubCostChip        = p.ff_scrub_cost_chip;
+    scrubInflightPenalty = p.ff_inflight_penalty;
+
+    /*
+    if (!scrubCostFull)        scrubCostFull = 2000000;  // 2ms¡]Tick¡^
+    if (!scrubCostChip)        scrubCostChip = 1000000;  // 1ms
+    if (!scrubInflightPenalty) scrubInflightPenalty = 200; // 200ns
+    */
     meet = new MeET(this, mp);
     meetIntervalPeriod = meet->getParams().intervalTicks;
     /* freefault end */
@@ -700,6 +709,8 @@ MemCtrl::accessAndRespond(PacketPtr pkt, Tick static_latency,
         // number of data beats.
         Tick response_time = curTick() + static_latency + pkt->headerDelay +
                              pkt->payloadDelay;
+        if (scrubActive())
+            response_time += scrubInflightPenalty;
         // Here we reset the timing of the packet before sending it out.
         pkt->headerDelay = pkt->payloadDelay = 0;
 
@@ -869,7 +880,10 @@ MemCtrl::doBurstAccess(MemPacket* mem_pkt, MemInterface* mem_intr)
 
     DPRINTF(MemCtrl, "Access to %#x, ready at %lld next burst at %lld.\n",
             mem_pkt->addr, mem_pkt->readyTime, mem_intr->nextBurstAt);
-
+    if (scrubActive()) {
+        mem_pkt->readyTime     += scrubInflightPenalty;
+        mem_intr->nextBurstAt  += scrubInflightPenalty;
+    }
     // Update the minimum timing between the requests, this is a
     // conservative estimate of when we have to schedule the next
     // request to not introduce any unecessary bubbles. In most cases
@@ -1619,9 +1633,11 @@ void MemCtrl::triggerFreeFaultScrubChip(int chip)
                         chip, meet->getParams().numChips);
         return;
     }
+    Tick when = std::max(curTick(), scrubBusyUntil) + 1;
+    
     pendingChipMask.set(chip);
     if (!scrubChipEvent.scheduled()){
-        schedule(scrubChipEvent, curTick() + 1);
+        schedule(scrubChipEvent, when);
         DPRINTF(Cache, "[Scrub] queued chip %d scrub (mask=0x%lx)\n",
                         chip, pendingChipMask.to_ulong());
     } else {
@@ -1642,10 +1658,21 @@ bool MemCtrl::isLineLockedInLLC(Addr line, bool &isPerm) const
 
 void MemCtrl::onScrubAllEvent()
 {
+    if (scrubActive()) {
+        schedule(scrubAllEvent, scrubBusyUntil);
+        DPRINTF(Cache, "[Scrub] defer full scrub to %lu (busyUntil)\n",
+                        scrubBusyUntil);
+        return;
+    }
     DPRINTF(Cache, "[Scrub] periodic full-DRAM scan start @%lu\n", curTick());
+    Tick until = curTick() + scrubCostFull;
+    if (until > scrubBusyUntil) scrubBusyUntil = until;
     scrubAllDRAM();
-    DPRINTF(Cache, "[Scrub] periodic full-DRAM scan end   @%lu\n", curTick());
-
+    DPRINTF(Cache, "[Scrub] periodic full scan done @%lu; busy until %lu (cost=%lu)\n",
+                    curTick(), scrubBusyUntil, scrubCostFull);
+    
+    /*Tick jitter = scrubStartJitter ? (random() % scrubStartJitter) : 0;
+    schedule(scrubAllEvent, curTick() + scrubPeriod + jitter);*/
     schedule(scrubAllEvent, curTick() + scrubPeriod);
 }
 
@@ -1656,16 +1683,30 @@ void MemCtrl::onScrubChipEvent()
 
     DPRINTF(Cache, "[Scrub] chip-only scan start mask=0x%lx @%lu\n",
                     mask.to_ulong(), curTick());
-
+    unsigned scanned_cnt = 0;
     for (unsigned chip = 0; chip < meet->getParams().numChips; ++chip) {
-        if (mask.test(chip)){
-            scrubOneChip(chip);
-            DPRINTF(Cache, "[Scrub] chip %d scan done @%lu\n", chip, curTick());
+        if (!mask.test(chip)) continue;
+
+        ++scanned_cnt;
+        scrubOneChip(chip);
+        DPRINTF(Cache, "[Scrub] chip-only %u scan done @%lu\n", chip, curTick());
+
+        if (meet) {
             meet->clearScrubPending(chip);
             meet->clearRecentErrorLines(chip);
             meet->clearfaultcounter(chip);
         }
+    }
 
+    if (scanned_cnt) {
+        Tick total_cost = scrubCostChip * scanned_cnt;
+        Tick base = std::max(scrubBusyUntil, curTick());
+        scrubBusyUntil = base + total_cost;
+
+        DPRINTF(Cache,
+            "[Scrub] chip-only busy added: chips=%u, cost_per_chip=%lu, "
+            "busyUntil=%lu\n",
+            scanned_cnt, scrubCostChip, scrubBusyUntil);
     }
 
     DPRINTF(Cache, "[Scrub] chip-only scan end @%lu\n", curTick());
@@ -1712,9 +1753,9 @@ void MemCtrl::scrubAllDRAM()
                 } else {
                     if (!FM.isFault(line)) {
                         FM.markFault(line);
+                        if (meet) meet->onCorrectableError(line);
                         DPRINTF(Cache, "[Scrub][SOFT] line=%#lx (new soft)\n", line);
                     }
-                    if (meet) meet->onCorrectableError(line);
                 }
             } else {
                 if (llcLocked && !llcPerm && FM.isFault(line)) {

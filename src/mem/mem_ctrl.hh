@@ -268,7 +268,13 @@ class MemCtrl : public qos::MemCtrl
 
     void scrubAllDRAM();
     void scrubOneChip(int chip);
+    Tick scrubCostFull = 0;
+    Tick scrubCostChip = 0;
+    Tick scrubBusyUntil = 0;
 
+    Tick scrubInflightPenalty = 0;
+
+    inline bool scrubActive() const { return curTick() < scrubBusyUntil; }
     bool isLineLockedInLLC(Addr line, bool &isPerm) const;
 
     inline unsigned chipIdOf(Addr line) const {

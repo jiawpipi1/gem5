@@ -161,6 +161,25 @@ parser.add_argument(
     default=None,
     help="FreeFault/MeET: interval length (e.g., 6us, 100us)",
 )
+
+parser.add_argument(
+    "--fl",
+    type=str,
+    default=None,
+    help="FreeFault/MeET: scrubbing full latency (e.g., 6us, 100us)",
+)
+parser.add_argument(
+    "--cl",
+    type=str,
+    default=None,
+    help="FreeFault/MeET: scrubbing chip latency (e.g., 6us, 100us)",
+)
+parser.add_argument(
+    "--il",
+    type=str,
+    default=None,
+    help="FreeFault/MeET: scrubbing inflight latency (e.g., 6us, 100us)",
+)
 Options.addCommonOptions(parser)
 Options.addSEOptions(parser)
 
@@ -337,6 +356,12 @@ else:
                 ctrl.freefault_retire_threshold = args.ff_threshold
             if args.ff_interval is not None:
                 ctrl.freefault_interval = args.ff_interval
+            if args.fl is not None:
+                ctrl.ff_scrub_cost_full = args.fl
+            if args.cl is not None:
+                ctrl.ff_scrub_cost_chip = args.cl
+            if args.il is not None:
+                ctrl.ff_inflight_penalty = args.il
 system.workload = SEWorkload.init_compatible(mp0_path)
 
 if args.wait_gdb:
