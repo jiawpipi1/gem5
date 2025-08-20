@@ -158,54 +158,32 @@ class BaseSetAssoc : public BaseTags
             const Addr lineAddr = pkt->getAddr() & ~(blkSize - 1);
             bool isIcache = name().find("icache") != std::string::npos;
             bool isLLC = name().find("l2") != std::string::npos;
-            if (blk->ffLock &&
-                !gem5::FaultManager::instance().isPermanentFault(lineAddr)
-                && !blk->ffway1){
-                DPRINTF(Cache, "[access] lock it as permamnent fault"
-                        "addr=%#lx lineAddr=%#lx "
-                        "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
-                        lineAddr, blk->getTag(), blk);
-                blk->ffLock = true;
-                blk->ffway0 = false;
-                blk->ffway1 = true;
-            } else if (blk->ffLock &&
-                !gem5::FaultManager::instance().isFault(lineAddr)){
-                DPRINTF(Cache, "[access] unlock time"
-                        "addr=%#lx lineAddr=%#lx "
-                        "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
-                        lineAddr, blk->getTag(), blk);
-                blk->ffLock = false;
-                blk->ffway0 = false;
-                blk->ffway1 = false;
-            } else if (blk->ffLock) {
-                DPRINTF(Cache, "[access] already locked"
-                        "addr=%#lx lineAddr=%#lx "
-                        "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
-                        lineAddr, blk->getTag(), blk);
-            } else if (isLLC&&!isIcache &&
-                gem5::FaultManager::instance().isFault(lineAddr)) {
-                // If the block is FreeFault-locked, we need to invalidate it
-                if (gem5::FaultManager::instance().isPermanentFault(lineAddr))
-                {
-                    DPRINTF(Cache, "[access] 1st mark as permanant addr=%#lx"
-                        "lineAddr=%#lx mark ffLock=1 tag=%#lx, blk%p\n",
-                        pkt->getAddr(), lineAddr, blk->getTag(), blk);
+            if(isLLC && !isIcache){
+                if (gem5::FaultManager::instance().isPermanentFault(lineAddr)) {
                     blk->ffLock = true;
                     blk->ffway0 = false;
                     blk->ffway1 = true;
-                } else {
-                    DPRINTF(Cache, "[access] mark as temporal fault addr=%#lx"
-                        "lineAddr=%#lx mark"
-                        "ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
-                        blk->getTag(), blk);
+                    DPRINTF(Cache, "[access] lock it as permamnent fault"
+                            "addr=%#lx lineAddr=%#lx "
+                            "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
+                            lineAddr, blk->getTag(), blk);
+                } else if (gem5::FaultManager::instance().isFault(lineAddr)) {
                     blk->ffLock = true;
                     blk->ffway0 = true;
                     blk->ffway1 = false;
+                    DPRINTF(Cache, "[access] lock it as soft fault"
+                        "addr=%#lx lineAddr=%#lx "
+                        "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
+                        lineAddr, blk->getTag(), blk);
+                } else {
+                    blk->ffLock = false;
+                    blk->ffway0 = false;
+                    blk->ffway1 = false;
+                    DPRINTF(Cache, "[access] not a fault"
+                        "addr=%#lx lineAddr=%#lx "
+                        "mark ffLock=%d tag=%#lx, blk%p\n", pkt->getAddr(),
+                        lineAddr, blk->ffLock, blk->getTag(), blk);
                 }
-            } else {
-                DPRINTF(Cache, "[access] access2 addr=%#lx lineAddr=%#lx mark"
-                    "ffLock  = %#lx, blk%p\n", pkt->getAddr(), lineAddr,
-                    blk->ffLock, blk);
             }
             /*freefault end*/
             // Update number of references to accessed block
@@ -288,52 +266,32 @@ class BaseSetAssoc : public BaseTags
         /*freefault start*/
         bool isIcache = name().find("icache") != std::string::npos;
         bool isLLC = name().find("l2") != std::string::npos;
-        if (blk->ffLock &&
-            !gem5::FaultManager::instance().isPermanentFault(lineAddr)
-            && !blk->ffway1){
-            DPRINTF(Cache, "[insert] lock it as permamnent fault"
-                    "addr=%#lx lineAddr=%#lx "
-                    "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
-                    lineAddr, blk->getTag(), blk);
-            blk->ffLock = true;
-            blk->ffway0 = false;
-            blk->ffway1 = true;
-        } else if (blk->ffLock &&
-            !gem5::FaultManager::instance().isFault(lineAddr)){
-            DPRINTF(Cache, "[insert] unlock time"
-                    "addr=%#lx lineAddr=%#lx "
-                    "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
-                    lineAddr, blk->getTag(), blk);
-            blk->ffLock = false;
-            blk->ffway0 = false;
-            blk->ffway1 = false;
-        } else if (blk->ffLock) {
-            DPRINTF(Cache, "[insert] already locked addr=%#lx lineAddr=%#lx "
-                    "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
-                    lineAddr, blk->getTag(), blk);
-        } else if (isLLC&&!isIcache &&
-            gem5::FaultManager::instance().isFault(lineAddr)) {
+        if(isLLC && !isIcache){
             if (gem5::FaultManager::instance().isPermanentFault(lineAddr)) {
-                DPRINTF(Cache, "[insert] 1st mark as permanant addr=%#lx"
-                        "lineAddr=%#lx mark ffLock=1 tag=%#lx, blk%p\n",
-                        pkt->getAddr(), lineAddr, blk->getTag(), blk);
                 blk->ffLock = true;
                 blk->ffway0 = false;
                 blk->ffway1 = true;
-            } else {
-            DPRINTF(Cache, "[insert] mark as temporal fault addr=%#lx"
-                "lineAddr=%#lx mark"
-                "ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
-                blk->getTag(), blk);
+                DPRINTF(Cache, "[insert] lock it as permamnent fault"
+                        "addr=%#lx lineAddr=%#lx "
+                        "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
+                        lineAddr, blk->getTag(), blk);
+            } else if (gem5::FaultManager::instance().isFault(lineAddr)) {
                 blk->ffLock = true;
                 blk->ffway0 = true;
                 blk->ffway1 = false;
+                DPRINTF(Cache, "[insert] lock it as soft fault"
+                    "addr=%#lx lineAddr=%#lx "
+                    "mark ffLock=1 tag=%#lx, blk%p\n", pkt->getAddr(),
+                    lineAddr, blk->getTag(), blk);
+            } else {
+                blk->ffLock = false;
+                blk->ffway0 = false;
+                blk->ffway1 = false;
+                DPRINTF(Cache, "[insert] not a fault"
+                    "addr=%#lx lineAddr=%#lx "
+                    "mark ffLock=%d tag=%#lx, blk%p\n", pkt->getAddr(),
+                    lineAddr, blk->ffLock, blk->getTag(), blk);
             }
-        } else {
-            DPRINTF(Cache,
-                "[insert] insert2 addr=%#lx lineAddr=%#lx ffLock =" 
-                "%#lx, blk%p\n",
-                pkt->getAddr(), lineAddr, blk->ffLock, blk);
         }
         /*freefault end*/
         // Increment tag counter
