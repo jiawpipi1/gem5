@@ -93,17 +93,17 @@ MeET::endInterval()
     std::fill(countPerChip.begin(), countPerChip.end(), 0);
 }
 
-void 
+void
 MeET::clearfaultcounter(int chip) {
     if (chip >= 0 && chip < (int)params.numChips){
         countPerChip[chip] = 0;
         DPRINTF(Cache, "[MeET] interval no: %lu, cleared counter for chip %d\n"
             "countPerChip[%d]=%u\n",
             interval_no, chip, chip, countPerChip[chip]);
-    } 
+    }
 }
 
-void 
+void
 MeET::clearRecentErrorLines(int chip) {
     if (chip >= 0 && chip < (int)params.numChips){
         recentError[chip].clear();
@@ -111,6 +111,6 @@ MeET::clearRecentErrorLines(int chip) {
             interval_no, chip);
         DPRINTF(Cache, "[MeET] recentError[%d].size()=%zu\n",
             chip, recentError[chip].size());
-    } 
+    }
 }
 } // namespace gem5

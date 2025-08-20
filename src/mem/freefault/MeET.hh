@@ -29,10 +29,12 @@ class MeET
 
 
     bool shouldTriggerScrub(int chip) const {
-        return (chip >= 0 && chip < (int)params.numChips) ? scrubPending[chip] : false;
+        return (chip >= 0 && 
+            chip < (int)params.numChips) ? scrubPending[chip] : false;
     }
     void clearScrubPending(int chip) {
-        if (chip >= 0 && chip < (int)params.numChips) scrubPending[chip] = false;
+        if (chip >= 0 && chip < (int)params.numChips) 
+            scrubPending[chip] = false;
     }
     void clearfaultcounter(int chip);
 
@@ -41,7 +43,7 @@ class MeET
         static const std::unordered_set<Addr> kEmpty;
         return (chip >= 0 && chip < (int)params.numChips) ? recentError[chip] : kEmpty;
     }
-    void clearRecentErrorLines(int chip); 
+    void clearRecentErrorLines(int chip);
 
 
     inline Addr lineAlign(Addr a) const { return a & ~(Addr(params.cacheLineBytes - 1)); }

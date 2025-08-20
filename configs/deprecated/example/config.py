@@ -137,14 +137,30 @@ parser.add_argument(
     default="",
     help="JSON file with list of faulty cachelines",
 )
-parser.add_argument("--ff-num-chips", type=int, default=None,
-                    help="FreeFault/MeET: number of DRAM chips")
-parser.add_argument("--ff-interleave", type=int, default=None,
-                    help="FreeFault/MeET: chip interleave bytes (power of 2)")
-parser.add_argument("--ff-threshold", type=int, default=None,
-                    help="FreeFault/MeET: retire threshold per interval")
-parser.add_argument("--ff-interval", type=str, default=None,
-                    help="FreeFault/MeET: interval length (e.g., 6us, 100us)")
+parser.add_argument(
+    "--ff-num-chips",
+    type=int,
+    default=None,
+    help="FreeFault/MeET: number of DRAM chips",
+)
+parser.add_argument(
+    "--ff-interleave",
+    type=int,
+    default=None,
+    help="FreeFault/MeET: chip interleave bytes (power of 2)",
+)
+parser.add_argument(
+    "--ff-threshold",
+    type=int,
+    default=None,
+    help="FreeFault/MeET: retire threshold per interval",
+)
+parser.add_argument(
+    "--ff-interval",
+    type=str,
+    default=None,
+    help="FreeFault/MeET: interval length (e.g., 6us, 100us)",
+)
 Options.addCommonOptions(parser)
 Options.addSEOptions(parser)
 
@@ -320,7 +336,7 @@ else:
             if args.ff_threshold is not None:
                 ctrl.freefault_retire_threshold = args.ff_threshold
             if args.ff_interval is not None:
-                ctrl.freefault_interval = args.ff_interval  
+                ctrl.freefault_interval = args.ff_interval
 system.workload = SEWorkload.init_compatible(mp0_path)
 
 if args.wait_gdb:

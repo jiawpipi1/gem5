@@ -39,7 +39,7 @@
  */
 #include "mem/mem_ctrl.hh"
 
-#include <list>  
+#include <list>
 #include "base/intmath.hh"
 #include "base/trace.hh"
 #include "debug/Cache.hh"
@@ -149,13 +149,13 @@ MemCtrl::startup()
         }
         DPRINTF(Cache, "[MeET] startup: start interval no=%lu, next tick at %lu (period=%lu)\n",
                         meet->intervalNo(), curTick() + meetIntervalPeriod, meetIntervalPeriod);
-    }   
+    }
     if (!scrubAllEvent.scheduled()){
         schedule(scrubAllEvent, curTick() + scrubPeriod);
         DPRINTF(Cache, "[FreeFault] startup: scrub all event scheduled at %lu (period=%lu)\n",
             curTick() + scrubPeriod, scrubPeriod);
     }
-   
+
     /*freefault end*/
 }
 
@@ -1617,7 +1617,7 @@ void MemCtrl::triggerFreeFaultScrubChip(int chip)
     if (chip < 0 || chip >= (int)meet->getParams().numChips){
         DPRINTF(Cache, "[Scrub] chip %d out of range [0, %d)\n",
                         chip, meet->getParams().numChips);
-        return;     
+        return;
     }
     pendingChipMask.set(chip);
     if (!scrubChipEvent.scheduled()){
@@ -1665,7 +1665,7 @@ void MemCtrl::onScrubChipEvent()
             meet->clearRecentErrorLines(chip);
             meet->clearfaultcounter(chip);
         }
-            
+
     }
 
     DPRINTF(Cache, "[Scrub] chip-only scan end @%lu\n", curTick());
@@ -1697,7 +1697,7 @@ void MemCtrl::scrubAllDRAM()
 
             bool llcLocked = false, llcPerm = false;
             llcLocked = isLineLockedInLLC(line, llcPerm);
-            if(llcLocked && !llcPerm) { 
+            if(llcLocked && !llcPerm) {
                 err = scrubSeesErrorLocked();
             } else {
                 err = scrubSeesError();
@@ -1732,7 +1732,7 @@ void MemCtrl::scrubOneChip(int chip)
     const auto line_bytes = meet->getParams().cacheLineBytes;
     AddrRangeList ranges;
     ranges.push_back(dram->getAddrRange());
-    
+
 
     for (const auto &r : ranges) {
         for (Addr a = roundDown(r.start(), line_bytes); a < r.end(); a += line_bytes) {
@@ -1743,7 +1743,7 @@ void MemCtrl::scrubOneChip(int chip)
 
             bool llcLocked = false, llcPerm = false;
             llcLocked = isLineLockedInLLC(line, llcPerm);
-            if(llcLocked && !llcPerm) { 
+            if(llcLocked && !llcPerm) {
                 err = scrubSeesErrorLocked();
             } else {
                 err = scrubSeesError();

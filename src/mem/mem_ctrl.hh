@@ -262,7 +262,7 @@ class MemCtrl : public qos::MemCtrl
     EventFunctionWrapper scrubChipEvent;
     std::bitset<64> pendingChipMask;
 
-    
+
     void onScrubAllEvent();
     void onScrubChipEvent();
 

@@ -331,7 +331,8 @@ class BaseSetAssoc : public BaseTags
             }
         } else {
             DPRINTF(Cache,
-                "[insert] insert2 addr=%#lx lineAddr=%#lx ffLock = %#lx, blk%p\n",
+                "[insert] insert2 addr=%#lx lineAddr=%#lx ffLock =" 
+                "%#lx, blk%p\n",
                 pkt->getAddr(), lineAddr, blk->ffLock, blk);
         }
         /*freefault end*/
