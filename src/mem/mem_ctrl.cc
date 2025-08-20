@@ -39,6 +39,8 @@
  */
 #include "mem/mem_ctrl.hh"
 
+#include <list>  
+#include "base/intmath.hh"
 #include "base/trace.hh"
 #include "debug/Cache.hh"
 #include "debug/DRAM.hh"
@@ -70,11 +72,10 @@ MemCtrl::MemCtrl(const MemCtrlParams &p) :
     respondEvent([this] {processRespondEvent(dram, respQueue,
                          respondEvent, retryRdReq); }, name()),
     /*freefault start*/
-    scrubEvent([this] { scrubFreeFaultBlocks(); },
-                name() + ".scrubEvent"),
     meetIntervalEvent([this]{ onMeetIntervalTick(); },
                         name() + ".meetIntervalEvent"),
-
+    scrubAllEvent([this]{ onScrubAllEvent(); }, name() + ".scrubAllEvent"),
+    scrubChipEvent([this]{ onScrubChipEvent(); }, name() + ".scrubChipEvent"),
     /*freefault end*/
     dram(p.dram),
     readBufferSize(dram->readBufferSize),
@@ -107,11 +108,10 @@ MemCtrl::MemCtrl(const MemCtrlParams &p) :
     }
     /* freefault start */
     MeET::Params mp;
-    mp.cacheLineBytes      = 64;
-    mp.numChips            = 8;
-    mp.chipInterleaveBytes = 8;
-    mp.retireThreshold     = 16;
-    mp.intervalTicks       = (Tick)5e5;
+    mp.numChips            = p.freefault_num_chips;
+    mp.chipInterleaveBytes = p.freefault_chip_interleave_bytes;
+    mp.retireThreshold     = p.freefault_retire_threshold;
+    mp.intervalTicks       = p.freefault_interval;
 
     meet = new MeET(this, mp);
     meetIntervalPeriod = meet->getParams().intervalTicks;
@@ -149,8 +149,13 @@ MemCtrl::startup()
         }
         DPRINTF(Cache, "[MeET] startup: start interval no=%lu, next tick at %lu (period=%lu)\n",
                         meet->intervalNo(), curTick() + meetIntervalPeriod, meetIntervalPeriod);
+    }   
+    if (!scrubAllEvent.scheduled()){
+        schedule(scrubAllEvent, curTick() + scrubPeriod);
+        DPRINTF(Cache, "[FreeFault] startup: scrub all event scheduled at %lu (period=%lu)\n",
+            curTick() + scrubPeriod, scrubPeriod);
     }
-
+   
     /*freefault end*/
 }
 
@@ -1598,41 +1603,7 @@ MemCtrl::MemoryPort::disableSanityCheck()
     queue.disableSanityCheck();
 }
 
-/*freefault start
-void MemCtrl::scrubFreeFaultBlocks()
-{
-    DPRINTF(Cache, "[Scrub] FreeFault scrubber triggered"
-         "at tick %llu\n", curTick());
-    DPRINTF(Cache, "[Scrub] l2Tags pointer = %p\n", l2Tags);
-    if (!l2Tags) {
-        warn("FreeFault scrubber: l2Tags not set! Skipping scrub.\n");
-        return;
-    }
-
-    unsigned offsetBits = floorLog2(system()->cacheLineSize());
-
-    for (auto& blk_const : l2Tags->getAllBlocks()) {
-        auto& blk = const_cast<CacheBlk&>(blk_const);
-        DPRINTF(Cache, "[Scrub] Checking block %#lx\n", blk.getTag()
-            << offsetBits);
-
-        if (blk.ffLock) {
-            DPRINTF(Cache, "[Scrub] Locked %#lx: checking for fault\n",
-                blk.getTag() << offsetBits);
-            Addr addr = blk.getTag() << offsetBits;
-            if (!gem5::FaultManager::instance().simulateDramReadFault(addr)) {
-                blk.ffLock = false;
-                gem5::FaultManager::instance().unmarkFault(addr);
-                DPRINTF(Cache, "[Scrub] Unlocked %#lx: fault disappeared\n"
-                    , addr);
-            }
-        }
-    }
-
-
-    schedule(scrubEvent, curTick() + scrubPeriod);
-}
-*/
+/*freefault start*/
 void MemCtrl::onMeetIntervalTick() {
     meet->endInterval();
     meet->startInterval();
@@ -1641,32 +1612,165 @@ void MemCtrl::onMeetIntervalTick() {
                     curTick(), curTick() + meetIntervalPeriod);
 }
 
-void
-MemCtrl::triggerFreeFaultScrubNow()
+void MemCtrl::triggerFreeFaultScrubChip(int chip)
 {
-    if (!scrubEvent.scheduled()) {
-        schedule(scrubEvent, curTick() + 1);
-        DPRINTF(Cache, "[MeET] request scrub ¡÷ scheduled at %lu\n", curTick() + 1);
+    if (chip < 0 || chip >= (int)meet->getParams().numChips){
+        DPRINTF(Cache, "[Scrub] chip %d out of range [0, %d)\n",
+                        chip, meet->getParams().numChips);
+        return;     
+    }
+    pendingChipMask.set(chip);
+    if (!scrubChipEvent.scheduled()){
+        schedule(scrubChipEvent, curTick() + 1);
+        DPRINTF(Cache, "[Scrub] queued chip %d scrub (mask=0x%lx)\n",
+                        chip, pendingChipMask.to_ulong());
     } else {
-        DPRINTF(Cache, "[MeET] request scrub ignored (already scheduled)\n");
+        DPRINTF(Cache, "[Scrub] chip %d scrub ignored (already scheduled)\n",
+                        chip);
     }
 }
 
-void
-MemCtrl::scrubFreeFaultBlocks()
+bool MemCtrl::isLineLockedInLLC(Addr line, bool &isPerm) const
 {
-    DPRINTF(Cache, "[Scrub] start at %lu\n", curTick());
-
-    // TODO: Your scan/judgment:
-    // - Reproduce the error ¡÷ FaultManager.markPermanentFault(addr)
-    // - Not reproduced ¡÷ FaultManager.unmarkFault(addr)
-    // - New error ¡÷ FaultManager.markFault(addr); meet->onCorrectableError(addr);
-    DPRINTF(Cache, "[Scrub] tototototot");
-    meet->clearScrubPending();
-    meet->clearRecentErrorLines();
-
-    DPRINTF(Cache, "[Scrub] end at %lu\n", curTick());
+    isPerm = false;
+    line = lineAlign(line);
+    auto &FM = gem5::FaultManager::instance();
+    if (FM.isPermanentFault(line)) { isPerm = true; return true; }
+    if (FM.isFault(line))          { isPerm = false; return true; }
+    return false;
 }
+
+void MemCtrl::onScrubAllEvent()
+{
+    DPRINTF(Cache, "[Scrub] periodic full-DRAM scan start @%lu\n", curTick());
+    scrubAllDRAM();
+    DPRINTF(Cache, "[Scrub] periodic full-DRAM scan end   @%lu\n", curTick());
+
+    schedule(scrubAllEvent, curTick() + scrubPeriod);
+}
+
+void MemCtrl::onScrubChipEvent()
+{
+    auto mask = pendingChipMask;
+    pendingChipMask.reset();
+
+    DPRINTF(Cache, "[Scrub] chip-only scan start mask=0x%lx @%lu\n",
+                    mask.to_ulong(), curTick());
+
+    for (unsigned chip = 0; chip < meet->getParams().numChips; ++chip) {
+        if (mask.test(chip)){
+            scrubOneChip(chip);
+            DPRINTF(Cache, "[Scrub] chip %d scan done @%lu\n", chip, curTick());
+            meet->clearScrubPending(chip);
+            meet->clearRecentErrorLines(chip);
+            meet->clearfaultcounter(chip);
+        }
+            
+    }
+
+    DPRINTF(Cache, "[Scrub] chip-only scan end @%lu\n", curTick());
+}
+
+static inline bool scrubSeesError()
+{
+    return (random() % 100000) == 0; // 1/100
+}
+
+static inline bool scrubSeesErrorLocked()
+{
+    return (random() % 10) == 0; // 1/100
+}
+
+void MemCtrl::scrubAllDRAM()
+{
+    auto &FM = gem5::FaultManager::instance();
+    const auto line_bytes = meet->getParams().cacheLineBytes;
+
+    AddrRangeList ranges;
+    ranges.push_back(dram->getAddrRange());
+
+    for (const auto &r : ranges) {
+        for (Addr a = roundDown(r.start(), line_bytes); a < r.end(); a += line_bytes) {
+
+            const Addr line = lineAlign(a);
+            bool err = false;
+
+            bool llcLocked = false, llcPerm = false;
+            llcLocked = isLineLockedInLLC(line, llcPerm);
+            if(llcLocked && !llcPerm) { 
+                err = scrubSeesErrorLocked();
+            } else {
+                err = scrubSeesError();
+            }
+
+            if (err) {
+                if (llcLocked) {
+                    if (!llcPerm) {
+                        FM.markPermanentFault(line);
+                        DPRINTF(Cache, "[Scrub][HARD] line=%#lx (locked in LLC)\n", line);
+                    }
+                } else {
+                    if (!FM.isFault(line)) {
+                        FM.markFault(line);
+                        DPRINTF(Cache, "[Scrub][SOFT] line=%#lx (new soft)\n", line);
+                    }
+                    if (meet) meet->onCorrectableError(line);
+                }
+            } else {
+                if (llcLocked && !llcPerm && FM.isFault(line)) {
+                    FM.unmarkFault(line);
+                    DPRINTF(Cache, "[Scrub][UNLOCK] line=%#lx (soft¡÷clean)\n", line);
+                }
+            }
+        }
+    }
+}
+
+void MemCtrl::scrubOneChip(int chip)
+{
+    auto &FM = gem5::FaultManager::instance();
+    const auto line_bytes = meet->getParams().cacheLineBytes;
+    AddrRangeList ranges;
+    ranges.push_back(dram->getAddrRange());
+    
+
+    for (const auto &r : ranges) {
+        for (Addr a = roundDown(r.start(), line_bytes); a < r.end(); a += line_bytes) {
+
+            const Addr line = lineAlign(a);
+            if ((int)chipIdOf(line) != chip) continue; // chip
+            bool err = false;
+
+            bool llcLocked = false, llcPerm = false;
+            llcLocked = isLineLockedInLLC(line, llcPerm);
+            if(llcLocked && !llcPerm) { 
+                err = scrubSeesErrorLocked();
+            } else {
+                err = scrubSeesError();
+            }
+
+            if (err) {
+                if (llcLocked) {
+                    if (!llcPerm) {
+                        FM.markPermanentFault(line);
+                        DPRINTF(Cache, "[ScrubChip %d][HARD] line=%#lx\n", chip, line);
+                    }
+                } else {
+                    if (!FM.isFault(line)) {
+                        FM.markFault(line);
+                        DPRINTF(Cache, "[ScrubChip %d][SOFT] line=%#lx\n", chip, line);
+                    }
+                }
+            } else {
+                if (llcLocked && !llcPerm && FM.isFault(line)) {
+                    FM.unmarkFault(line);
+                    DPRINTF(Cache, "[ScrubChip %d][UNLOCK] line=%#lx\n", chip, line);
+                }
+            }
+        }
+    }
+}
+
 
 /*freefault end*/
 

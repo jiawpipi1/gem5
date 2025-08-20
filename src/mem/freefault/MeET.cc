@@ -8,7 +8,9 @@
 namespace gem5 {
 
 MeET::MeET(memory::MemCtrl* o, const Params& p)
-    : owner(o), params(p), countPerChip(p.numChips, 0)
+    : owner(o), params(p), countPerChip(p.numChips, 0),
+    scrubPending(p.numChips, false),
+    recentError(p.numChips)
 {
     fatal_if((params.chipInterleaveBytes == 0) ||
              (params.chipInterleaveBytes &
@@ -44,14 +46,13 @@ MeET::incrChipCounter(int chip)
 void
 MeET::tryTriggerScrub(int chip)
 {
-    if (!scrubPending && countPerChip[chip] >= params.retireThreshold) {
-        scrubPending = true;
+    if (!scrubPending[chip] && countPerChip[chip] >= params.retireThreshold) {
+        scrubPending[chip] = true;
         DPRINTF(Cache, "[MeET] interval no: %lu, threshold reached on chip"
                         "%d (count=%u, threshold=%u) -> trigger scrubber\n",
                         interval_no, chip, countPerChip[chip],
                         params.retireThreshold);
-        countPerChip[chip] = 0;
-        if (owner) owner->triggerFreeFaultScrubNow();
+        if (owner) owner->triggerFreeFaultScrubChip(chip);
     }
 }
 
@@ -59,9 +60,14 @@ void
 MeET::onCorrectableError(Addr physAddr)
 {
     const Addr line = lineAlign(physAddr);
-    recentError.insert(line);
-
     const int chip = chipIdOf(line);
+    if (chip < 0 || chip >= (int)params.numChips){
+        DPRINTF(Cache, "[MeET] interval no: %lu, onCorrectableError"
+                        "line=%#lx chip=%d (out of range)\n",
+                        interval_no, line, chip);
+        return;
+    }
+    recentError[chip].insert(line);
     DPRINTF(Cache, "[MeET] interval no: %lu, onCorrectableError"
                     "line=%#lx chip=%d\n",
                     interval_no, line, chip);
@@ -87,4 +93,24 @@ MeET::endInterval()
     std::fill(countPerChip.begin(), countPerChip.end(), 0);
 }
 
+void 
+MeET::clearfaultcounter(int chip) {
+    if (chip >= 0 && chip < (int)params.numChips){
+        countPerChip[chip] = 0;
+        DPRINTF(Cache, "[MeET] interval no: %lu, cleared counter for chip %d\n"
+            "countPerChip[%d]=%u\n",
+            interval_no, chip, chip, countPerChip[chip]);
+    } 
+}
+
+void 
+MeET::clearRecentErrorLines(int chip) {
+    if (chip >= 0 && chip < (int)params.numChips){
+        recentError[chip].clear();
+        DPRINTF(Cache, "[MeET] interval no: %lu, cleared recent error lines for chip %d\n",
+            interval_no, chip);
+        DPRINTF(Cache, "[MeET] recentError[%d].size()=%zu\n",
+            chip, recentError[chip].size());
+    } 
+}
 } // namespace gem5

@@ -46,6 +46,7 @@
 #ifndef __MEM_CTRL_HH__
 #define __MEM_CTRL_HH__
 
+#include <bitset>
 #include <deque>
 #include <string>
 #include <unordered_set>
@@ -249,15 +250,37 @@ class MemCtrl : public qos::MemCtrl
 {
   protected:
   /*freefault start*/
-    EventFunctionWrapper scrubEvent;
-    void scrubFreeFaultBlocks();
-    Tick scrubPeriod = 10000000;
+    Tick scrubPeriod = 20000000;
     BaseSetAssoc* l2Tags = nullptr;
     void setL2Tags(BaseSetAssoc* tags) { l2Tags = tags; }
 
     MeET* meet = nullptr;
     EventFunctionWrapper meetIntervalEvent;
     Tick meetIntervalPeriod = 0;
+
+    EventFunctionWrapper scrubAllEvent;
+    EventFunctionWrapper scrubChipEvent;
+    std::bitset<64> pendingChipMask;
+
+    
+    void onScrubAllEvent();
+    void onScrubChipEvent();
+
+    void scrubAllDRAM();
+    void scrubOneChip(int chip);
+
+    bool isLineLockedInLLC(Addr line, bool &isPerm) const;
+
+    inline unsigned chipIdOf(Addr line) const {
+      const auto& mp = meet->getParams();
+      unsigned b = mp.chipInterleaveBytes, sh = 0;
+      while ((b & 1u) == 0u) { sh++; b >>= 1; }
+      return (line >> sh) % mp.numChips;
+    }
+
+    inline Addr lineAlign(Addr a) const {
+      return a & ~(Addr(meet->getParams().cacheLineBytes - 1));
+    }
 
 
   /*freefault end*/
@@ -694,6 +717,7 @@ class MemCtrl : public qos::MemCtrl
     /*freefault start*/
     void onMeetIntervalTick();
     void triggerFreeFaultScrubNow();
+    void triggerFreeFaultScrubChip(int chip);
     /*freefault end*/
 
     /**

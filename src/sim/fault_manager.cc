@@ -36,8 +36,10 @@ FaultManager::isFault(Addr a) const
 {
     Addr aligned = a & ~(blkSize - 1);
     bool result = faultSet.count(aligned) > 0;
-    DPRINTF(Cache, "[FaultManager] Check addr=%#lx aligned=%#lx => %s\n",
-            a, aligned, result ? "FAULT" : "OK");
+    /*if(result){
+        DPRINTF(Cache, "[FaultManager] Check addr=%#lx aligned=%#lx => FAULT\n",
+                a, aligned);
+    }*/
     return result;
 }
 
@@ -46,8 +48,10 @@ FaultManager::isPermanentFault(Addr a) const
 {
     Addr aligned = a & ~(blkSize - 1);
     bool result = permanentFaultSet.count(aligned) > 0;
-    DPRINTF(Cache, "[FaultManager] Check addr=%#lx aligned=%#lx => %s\n",
-            a, aligned, result ? "Permanent FAULT" : "OK");
+    if(result){
+        DPRINTF(Cache, "[FaultManager] Check addr=%#lx aligned=%#lx => PERMANENT FAULT\n",
+                a, aligned);
+    }
     return result;
 }
 

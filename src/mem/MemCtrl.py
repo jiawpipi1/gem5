@@ -59,6 +59,12 @@ class MemCtrl(QoSMemCtrl):
     cxx_header = "mem/mem_ctrl.hh"
     cxx_class = "gem5::memory::MemCtrl"
 
+    # === FreeFault / MeET params ===
+    freefault_num_chips = Param.Unsigned(8, "Number of DRAM chips")
+    freefault_chip_interleave_bytes = Param.Unsigned(8, "Bytes per chip interleave (power of two)")
+    freefault_retire_threshold = Param.Unsigned(16, "MeET per-chip retire threshold per interval")
+    freefault_interval = Param.Latency('6us', "MeET interval length")
+
     # single-ported on the system interface side, instantiate with a
     # bus in front of the controller for multiple ports
     port = ResponsePort("This port responds to memory requests")

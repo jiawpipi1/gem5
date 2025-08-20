@@ -138,7 +138,6 @@ class BaseSetAssoc : public BaseTags
         /*add freefault start*/
         const Addr addr = pkt->getAddr();
         CacheBlk *blk   = findBlock({addr, pkt->isSecure()});
-        const bool hit  = (blk != nullptr);
 
         // Access all tags in parallel, hence one in each way.  The data side
         // either accesses all blocks in parallel, or one block sequentially on
@@ -205,8 +204,8 @@ class BaseSetAssoc : public BaseTags
                 }
             } else {
                 DPRINTF(Cache, "[access] access2 addr=%#lx lineAddr=%#lx mark"
-                    "ffLock unchange tag=%#lx, blk%p\n", pkt->getAddr(),
-                    lineAddr, blk->getTag(), blk);
+                    "ffLock  = %#lx, blk%p\n", pkt->getAddr(), lineAddr,
+                    blk->ffLock, blk);
             }
             /*freefault end*/
             // Update number of references to accessed block
@@ -332,9 +331,8 @@ class BaseSetAssoc : public BaseTags
             }
         } else {
             DPRINTF(Cache,
-                "[insert] insert2 addr=%#lx lineAddr=%#lx ffLock unchange"
-                "tag=%#lx, blk%p\n", pkt->getAddr(), lineAddr,
-                blk->getTag(), blk);
+                "[insert] insert2 addr=%#lx lineAddr=%#lx ffLock = %#lx, blk%p\n",
+                pkt->getAddr(), lineAddr, blk->ffLock, blk);
         }
         /*freefault end*/
         // Increment tag counter
