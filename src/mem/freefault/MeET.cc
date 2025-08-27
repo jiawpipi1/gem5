@@ -47,6 +47,7 @@ void
 MeET::tryTriggerScrub(int chip)
 {
     if (!scrubPending[chip] && countPerChip[chip] >= params.retireThreshold) {
+        owner->ffNoteMeetThreshold(chip);
         scrubPending[chip] = true;
         DPRINTF(Cache, "[MeET] interval no: %lu, threshold reached on chip"
                         "%d (count=%u, threshold=%u) -> trigger scrubber\n",
@@ -61,6 +62,7 @@ MeET::onCorrectableError(Addr physAddr)
 {
     const Addr line = lineAlign(physAddr);
     const int chip = chipIdOf(line);
+    owner->ffNoteMeetError(line, chip);
     if (chip < 0 || chip >= (int)params.numChips){
         DPRINTF(Cache, "[MeET] interval no: %lu, onCorrectableError"
                         "line=%#lx chip=%d (out of range)\n",

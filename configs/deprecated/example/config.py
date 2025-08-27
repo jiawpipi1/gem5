@@ -180,6 +180,13 @@ parser.add_argument(
     default=None,
     help="FreeFault/MeET: scrubbing inflight latency (e.g., 6us, 100us)",
 )
+
+parser.add_argument(
+    "--scrub-interval",
+    type=str,
+    default=None,
+    help="FreeFault/MeET: periodic scrubbing interval (e.g., 6us, 100us)",
+)
 Options.addCommonOptions(parser)
 Options.addSEOptions(parser)
 
@@ -362,6 +369,9 @@ else:
                 ctrl.ff_scrub_cost_chip = args.cl
             if args.il is not None:
                 ctrl.ff_inflight_penalty = args.il
+            if args.scrub_interval is not None:
+                ctrl.ff_scrub_period = args.scrub_interval
+
 system.workload = SEWorkload.init_compatible(mp0_path)
 
 if args.wait_gdb:

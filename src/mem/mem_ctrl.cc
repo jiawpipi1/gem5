@@ -116,6 +116,7 @@ MemCtrl::MemCtrl(const MemCtrlParams &p) :
     scrubCostFull        = p.ff_scrub_cost_full;
     scrubCostChip        = p.ff_scrub_cost_chip;
     scrubInflightPenalty = p.ff_inflight_penalty;
+    scrubPeriod          = p.ff_scrub_period;  
 
     /*
     if (!scrubCostFull)        scrubCostFull = 2000000;  // 2ms¡]Tick¡^
@@ -473,6 +474,7 @@ MemCtrl::recvTimingReq(PacketPtr pkt)
         if (random() % 10 == 0) {
             gem5::FaultManager::instance().markFault(lineAddr);
             DPRINTF(Cache, "[Inject] Injected DRAM fault at %#lx\n", lineAddr);
+            ffNoteSoftLock(lineAddr, chipIdOf(lineAddr));
             meet->onCorrectableError(lineAddr);
         } else {
             DPRINTF(Cache, "[Inject] No fault injected for"
@@ -1344,7 +1346,34 @@ MemCtrl::CtrlStats::CtrlStats(MemCtrl &_ctrl)
              "Per-requestor read average memory access latency"),
     ADD_STAT(requestorWriteAvgLat, statistics::units::Rate<
                 statistics::units::Tick, statistics::units::Count>::get(),
-             "Per-requestor write average memory access latency")
+             "Per-requestor write average memory access latency"),
+    //freefault start
+    ADD_STAT(ff_soft_locks, statistics::units::Count::get(),
+               "FreeFault: number of soft-locked (temp-retired) lines"),
+      ADD_STAT(ff_unlocks, statistics::units::Count::get(),
+               "FreeFault: number of unlocks (soft -> clean)"),
+      ADD_STAT(ff_hard_locks, statistics::units::Count::get(),
+               "FreeFault: number of hard/permanent locked lines"),
+      ADD_STAT(ff_scrub_full_cnt, statistics::units::Count::get(),
+               "FreeFault: number of full-DRAM scrubs"),
+      ADD_STAT(ff_scrub_chip_cnt, statistics::units::Count::get(),
+               "FreeFault: number of chip-only scrubs"),
+      ADD_STAT(ff_meet_errors, statistics::units::Count::get(),
+               "FreeFault: correctable errors observed by MeET"),
+      ADD_STAT(ff_meet_thresholds, statistics::units::Count::get(),
+               "FreeFault: MeET threshold crossings (trigger scrub)"),
+
+      ff_soft_by_chip(this, "ff_soft_by_chip",
+                      statistics::units::Count::get(),
+                      "FreeFault: soft-locked lines per chip"),
+      ff_hard_by_chip(this, "ff_hard_by_chip",
+                      statistics::units::Count::get(),
+                      "FreeFault: hard/permanent lines per chip"),
+      ff_unlock_by_chip(this, "ff_unlock_by_chip",
+                        statistics::units::Count::get(),
+                        "FreeFault: unlocks per chip")
+    //freefault end
+
 {
 }
 
@@ -1442,6 +1471,14 @@ MemCtrl::CtrlStats::regStats()
     requestorWriteRate = requestorWriteBytes / simSeconds;
     requestorReadAvgLat = requestorReadTotalLat / requestorReadAccesses;
     requestorWriteAvgLat = requestorWriteTotalLat / requestorWriteAccesses;
+    //freefault start
+    unsigned chips = 1;
+    if (ctrl.meet) chips = std::max(1u, ctrl.meet->getParams().numChips);
+
+    ff_soft_by_chip.init(chips);
+    ff_hard_by_chip.init(chips);
+    ff_unlock_by_chip.init(chips);
+    //freefault end
 }
 
 void
@@ -1634,7 +1671,7 @@ void MemCtrl::triggerFreeFaultScrubChip(int chip)
         return;
     }
     Tick when = std::max(curTick(), scrubBusyUntil) + 1;
-    
+
     pendingChipMask.set(chip);
     if (!scrubChipEvent.scheduled()){
         schedule(scrubChipEvent, when);
@@ -1658,6 +1695,7 @@ bool MemCtrl::isLineLockedInLLC(Addr line, bool &isPerm) const
 
 void MemCtrl::onScrubAllEvent()
 {
+
     if (scrubActive()) {
         schedule(scrubAllEvent, scrubBusyUntil);
         DPRINTF(Cache, "[Scrub] defer full scrub to %lu (busyUntil)\n",
@@ -1670,7 +1708,7 @@ void MemCtrl::onScrubAllEvent()
     scrubAllDRAM();
     DPRINTF(Cache, "[Scrub] periodic full scan done @%lu; busy until %lu (cost=%lu)\n",
                     curTick(), scrubBusyUntil, scrubCostFull);
-    
+
     /*Tick jitter = scrubStartJitter ? (random() % scrubStartJitter) : 0;
     schedule(scrubAllEvent, curTick() + scrubPeriod + jitter);*/
     schedule(scrubAllEvent, curTick() + scrubPeriod);
@@ -1724,6 +1762,7 @@ static inline bool scrubSeesErrorLocked()
 
 void MemCtrl::scrubAllDRAM()
 {
+    ffNoteScrubFull();
     auto &FM = gem5::FaultManager::instance();
     const auto line_bytes = meet->getParams().cacheLineBytes;
 
@@ -1748,11 +1787,13 @@ void MemCtrl::scrubAllDRAM()
                 if (llcLocked) {
                     if (!llcPerm) {
                         FM.markPermanentFault(line);
+                        ffNoteHardLock(line, chipIdOf(line));
                         DPRINTF(Cache, "[Scrub][HARD] line=%#lx (locked in LLC)\n", line);
                     }
                 } else {
                     if (!FM.isFault(line)) {
                         FM.markFault(line);
+                        ffNoteSoftLock(line, chipIdOf(line)); 
                         if (meet) meet->onCorrectableError(line);
                         DPRINTF(Cache, "[Scrub][SOFT] line=%#lx (new soft)\n", line);
                     }
@@ -1760,6 +1801,7 @@ void MemCtrl::scrubAllDRAM()
             } else {
                 if (llcLocked && !llcPerm && FM.isFault(line)) {
                     FM.unmarkFault(line);
+                    ffNoteUnlock(line, chipIdOf(line));
                     DPRINTF(Cache, "[Scrub][UNLOCK] line=%#lx (soft¡÷clean)\n", line);
                 }
             }
@@ -1769,6 +1811,7 @@ void MemCtrl::scrubAllDRAM()
 
 void MemCtrl::scrubOneChip(int chip)
 {
+    ffNoteScrubChip(chip);
     auto &FM = gem5::FaultManager::instance();
     const auto line_bytes = meet->getParams().cacheLineBytes;
     AddrRangeList ranges;
@@ -1794,17 +1837,20 @@ void MemCtrl::scrubOneChip(int chip)
                 if (llcLocked) {
                     if (!llcPerm) {
                         FM.markPermanentFault(line);
+                        ffNoteHardLock(line, chipIdOf(line)); 
                         DPRINTF(Cache, "[ScrubChip %d][HARD] line=%#lx\n", chip, line);
                     }
                 } else {
                     if (!FM.isFault(line)) {
                         FM.markFault(line);
+                        ffNoteSoftLock(line, chipIdOf(line));
                         DPRINTF(Cache, "[ScrubChip %d][SOFT] line=%#lx\n", chip, line);
                     }
                 }
             } else {
                 if (llcLocked && !llcPerm && FM.isFault(line)) {
                     FM.unmarkFault(line);
+                    ffNoteUnlock(line, chipIdOf(line));
                     DPRINTF(Cache, "[ScrubChip %d][UNLOCK] line=%#lx\n", chip, line);
                 }
             }
@@ -1812,6 +1858,29 @@ void MemCtrl::scrubOneChip(int chip)
     }
 }
 
+void MemCtrl::ffNoteSoftLock(Addr line, int chip) {
+    stats.ff_soft_locks++;
+    if (chip >= 0 && chip < (int)stats.ff_soft_by_chip.size())
+        stats.ff_soft_by_chip[chip]++;
+}
+
+void MemCtrl::ffNoteUnlock(Addr line, int chip) {
+    stats.ff_unlocks++;
+    if (chip >= 0 && chip < (int)stats.ff_unlock_by_chip.size())
+        stats.ff_unlock_by_chip[chip]++;
+}
+
+void MemCtrl::ffNoteHardLock(Addr line, int chip) {
+    stats.ff_hard_locks++;
+    if (chip >= 0 && chip < (int)stats.ff_hard_by_chip.size())
+        stats.ff_hard_by_chip[chip]++;
+}
+
+void MemCtrl::ffNoteScrubFull() { stats.ff_scrub_full_cnt++; }
+void MemCtrl::ffNoteScrubChip(int chip) { stats.ff_scrub_chip_cnt++; }
+
+void MemCtrl::ffNoteMeetError(Addr line, int chip) { stats.ff_meet_errors++; }
+void MemCtrl::ffNoteMeetThreshold(int chip) { stats.ff_meet_thresholds++; }
 
 /*freefault end*/
 

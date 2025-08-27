@@ -68,10 +68,20 @@ class MemCtrl(QoSMemCtrl):
         16, "MeET per-chip retire threshold per interval"
     )
     freefault_interval = Param.Latency("6us", "MeET interval length")
-    ff_scrub_cost_full  = Param.Latency('2ms',  "Busy time after a full-DRAM scrub")
-    ff_scrub_cost_chip  = Param.Latency('1ms',  "Busy time after a chip-only scrub")
-    ff_inflight_penalty = Param.Latency('0ns',"Extra latency per request while scrubbing")
-    #freefault end
+    ff_scrub_cost_full = Param.Latency(
+        "2ms", "Busy time after a full-DRAM scrub"
+    )
+    ff_scrub_cost_chip = Param.Latency(
+        "1ms", "Busy time after a chip-only scrub"
+    )
+    ff_inflight_penalty = Param.Latency(
+        "0ns", "Extra latency per request while scrubbing"
+    )
+
+    ff_scrub_period = Param.Latency(
+        "0ns", "Period between scrubs, 0 means no periodic scrubbing"
+    )
+    # freefault end
     # single-ported on the system interface side, instantiate with a
     # bus in front of the controller for multiple ports
     port = ResponsePort("This port responds to memory requests")

@@ -250,7 +250,7 @@ class MemCtrl : public qos::MemCtrl
 {
   protected:
   /*freefault start*/
-    Tick scrubPeriod = 20000000;
+    Tick scrubPeriod = 0;
     BaseSetAssoc* l2Tags = nullptr;
     void setL2Tags(BaseSetAssoc* tags) { l2Tags = tags; }
 
@@ -660,6 +660,20 @@ class MemCtrl : public qos::MemCtrl
         // per-requestor raed and write average memory access latency
         statistics::Formula requestorReadAvgLat;
         statistics::Formula requestorWriteAvgLat;
+        // freefault start
+        statistics::Scalar ff_soft_locks;      
+        statistics::Scalar ff_unlocks;        
+        statistics::Scalar ff_hard_locks;      
+        statistics::Scalar ff_scrub_full_cnt;  
+        statistics::Scalar ff_scrub_chip_cnt;  
+        statistics::Scalar ff_meet_errors;     
+        statistics::Scalar ff_meet_thresholds; 
+
+        statistics::Vector ff_soft_by_chip;
+        statistics::Vector ff_hard_by_chip;
+        statistics::Vector ff_unlock_by_chip;
+        // freefault end
+
     };
 
     CtrlStats stats;
@@ -724,6 +738,13 @@ class MemCtrl : public qos::MemCtrl
     void onMeetIntervalTick();
     void triggerFreeFaultScrubNow();
     void triggerFreeFaultScrubChip(int chip);
+    void ffNoteSoftLock(Addr line, int chip);
+    void ffNoteUnlock(Addr line, int chip);
+    void ffNoteHardLock(Addr line, int chip);
+    void ffNoteScrubFull();
+    void ffNoteScrubChip(int chip);
+    void ffNoteMeetError(Addr line, int chip);
+    void ffNoteMeetThreshold(int chip);
     /*freefault end*/
 
     /**
