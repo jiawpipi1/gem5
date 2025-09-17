@@ -56,12 +56,16 @@
 #include "sim/fault_manager.hh"
 #include "sim/system.hh"
 #include "mem/freefault/MeET.hh"
+#include "mem/error_model.hh"
 
 namespace gem5
 {
 
 namespace memory
 {
+
+using gem5::DRAMFailureModel;
+DRAMFailureModel* errModel = nullptr;
 
 MemCtrl::MemCtrl(const MemCtrlParams &p) :
     qos::MemCtrl(p),
@@ -141,6 +145,23 @@ MemCtrl::init()
 void
 MemCtrl::startup()
 {
+    /*freefault start*/
+    DRAMFailureModel::Params ep;
+    ep.use_per_device       = true;                       
+    ep.lambda_dev_per_hour  = 66.1 / 1e9;                 
+    ep.device_mbit          = 128000;                     
+    ep.epoch_ticks          = (Tick) 6e6;                
+    ep.soft_lifetime_ticks  = scrubPeriod/2;                
+    ep.lines_per_row        = 1024;
+    ep.rows_per_bank        = 16384;
+    ep.banks_per_rank       = 8;
+    ep.ranks                = 2;
+    ep.line_bytes           = 64;
+    ep.seed                 = 1;
+
+    errModel = new DRAMFailureModel(ep);
+
+    /*freefault end*/
     // remember the memory system mode of operation
     isTimingMode = system()->isTimingMode();
 
@@ -455,6 +476,7 @@ bool
 MemCtrl::recvTimingReq(PacketPtr pkt)
 {
     // This is where we enter from the outside world
+    Addr lineAddr = pkt->getAddr() & ~(64 - 1); // cacheline aligned
     DPRINTF(MemCtrl, "recvTimingReq: request %s addr %#x size %d\n",
             pkt->cmdString(), pkt->getAddr(), pkt->getSize());
 
@@ -465,21 +487,23 @@ MemCtrl::recvTimingReq(PacketPtr pkt)
              "Should only see read and writes at memory controller\n");
     /*freefault start*/
     if (pkt->isRead()) {
-        DPRINTF(Cache, "[Inject] In the function\n");
+        bool is_hard = false;
         Addr lineAddr = pkt->getAddr() & ~(64 - 1); // cacheline aligned
+        DPRINTF(Cache, "[Inject] In the function\n");
         if (gem5::FaultManager::instance().isFault(lineAddr)) {
             DPRINTF(Cache, "[FreeFault][VERIFY] ERROR: Accessed DRAM"
             "for locked line %#lx\n", lineAddr);
-        } //make sure that if it's locked we won't access it again
-        if (random() % 10 == 0) {
-            gem5::FaultManager::instance().markFault(lineAddr);
+        }
+        if (errModel->is_error(lineAddr, curTick(), is_hard)) {
             DPRINTF(Cache, "[Inject] Injected DRAM fault at %#lx\n", lineAddr);
+            gem5::FaultManager::instance().markFault(lineAddr);
             ffNoteSoftLock(lineAddr, chipIdOf(lineAddr));
             meet->onCorrectableError(lineAddr);
         } else {
             DPRINTF(Cache, "[Inject] No fault injected for"
                 "addr=%#lx\n", pkt->getAddr());
         }
+        
     }else {
         DPRINTF(Cache, "[Inject] Not a read, no fault"
         "injected for addr=%#lx\n", pkt->getAddr());
@@ -1656,6 +1680,7 @@ MemCtrl::MemoryPort::disableSanityCheck()
 
 /*freefault start*/
 void MemCtrl::onMeetIntervalTick() {
+    if (errModel) errModel->tick(curTick());
     meet->endInterval();
     meet->startInterval();
     schedule(meetIntervalEvent, curTick() + meetIntervalPeriod);
@@ -1764,98 +1789,91 @@ void MemCtrl::scrubAllDRAM()
 {
     ffNoteScrubFull();
     auto &FM = gem5::FaultManager::instance();
-    const auto line_bytes = meet->getParams().cacheLineBytes;
+    const Tick now = curTick();
+    const AddrRange ar = dram->getAddrRange();
+    const Addr line_bytes = meet->getParams().cacheLineBytes;
 
-    AddrRangeList ranges;
-    ranges.push_back(dram->getAddrRange());
-
-    for (const auto &r : ranges) {
-        for (Addr a = roundDown(r.start(), line_bytes); a < r.end(); a += line_bytes) {
-
-            const Addr line = lineAlign(a);
-            bool err = false;
-
-            bool llcLocked = false, llcPerm = false;
-            llcLocked = isLineLockedInLLC(line, llcPerm);
-            if(llcLocked && !llcPerm) {
-                err = scrubSeesErrorLocked();
+    for (Addr a = roundDown(ar.start(), line_bytes); a < ar.end(); a += line_bytes) {
+        const Addr line = a; 
+        bool is_hard = false;
+        const bool active = errModel && errModel->activeAt(line, now, is_hard);
+        if (active) {
+            if (is_hard) {
+                if (!FM.isPermanentFault(line)) {
+                    FM.markPermanentFault(line);
+                    ffNoteHardLock(line, chipIdOf(line));
+                    DPRINTF(Cache, "[Scrub][HARD] line=%#lx\n", line);
+                }
             } else {
-                err = scrubSeesError();
+                if (!FM.isFault(line)) {
+                    FM.markFault(line);
+                    ffNoteSoftLock(line, chipIdOf(line)); 
+                    if (meet) meet->onCorrectableError(line);
+                    DPRINTF(Cache, "[Scrub][SOFT] line=%#lx\n", line);
+                }
             }
-
-            if (err) {
-                if (llcLocked) {
-                    if (!llcPerm) {
-                        FM.markPermanentFault(line);
-                        ffNoteHardLock(line, chipIdOf(line));
-                        DPRINTF(Cache, "[Scrub][HARD] line=%#lx (locked in LLC)\n", line);
-                    }
-                } else {
-                    if (!FM.isFault(line)) {
-                        FM.markFault(line);
-                        ffNoteSoftLock(line, chipIdOf(line)); 
-                        if (meet) meet->onCorrectableError(line);
-                        DPRINTF(Cache, "[Scrub][SOFT] line=%#lx (new soft)\n", line);
-                    }
-                }
-            } else {
-                if (llcLocked && !llcPerm && FM.isFault(line)) {
-                    FM.unmarkFault(line);
-                    ffNoteUnlock(line, chipIdOf(line));
-                    DPRINTF(Cache, "[Scrub][UNLOCK] line=%#lx (soft¡÷clean)\n", line);
-                }
+        } else {
+            if (FM.isFault(line) && !FM.isPermanentFault(line)) {
+                FM.unmarkFault(line);
+                ffNoteUnlock(line, chipIdOf(line));
+                DPRINTF(Cache, "[Scrub][UNLOCK] line=%#lx\n", line);
             }
         }
     }
+
+    DPRINTF(Cache, "[Scrub] full-DRAM scan end   @%lu\n", curTick());
 }
 
 void MemCtrl::scrubOneChip(int chip)
 {
     ffNoteScrubChip(chip);
     auto &FM = gem5::FaultManager::instance();
-    const auto line_bytes = meet->getParams().cacheLineBytes;
-    AddrRangeList ranges;
-    ranges.push_back(dram->getAddrRange());
+    const Tick now = curTick();
+    const AddrRange ar = dram->getAddrRange();
+    const Addr line_bytes = meet->getParams().cacheLineBytes;
 
+    auto chipOf = [&](Addr a)->unsigned {
+        unsigned b = meet->getParams().chipInterleaveBytes;
+        unsigned shift = 0; while ((b & 1u) == 0u) { shift++; b >>= 1; }
+        return ((unsigned)(a >> shift)) % meet->getParams().numChips;
+    };
 
-    for (const auto &r : ranges) {
-        for (Addr a = roundDown(r.start(), line_bytes); a < r.end(); a += line_bytes) {
+    for (Addr a = roundDown(ar.start(), line_bytes); a < ar.end(); a += line_bytes) {
+        if (chipOf(a) != (unsigned)chip) continue;
 
-            const Addr line = lineAlign(a);
-            if ((int)chipIdOf(line) != chip) continue; // chip
-            bool err = false;
+        const Addr line = a;
+        bool is_hard = false;
+        const bool active = errModel && errModel->activeAt(line, now, is_hard);
 
-            bool llcLocked = false, llcPerm = false;
-            llcLocked = isLineLockedInLLC(line, llcPerm);
-            if(llcLocked && !llcPerm) {
-                err = scrubSeesErrorLocked();
-            } else {
-                err = scrubSeesError();
-            }
-
-            if (err) {
-                if (llcLocked) {
-                    if (!llcPerm) {
-                        FM.markPermanentFault(line);
-                        ffNoteHardLock(line, chipIdOf(line)); 
-                        DPRINTF(Cache, "[ScrubChip %d][HARD] line=%#lx\n", chip, line);
-                    }
-                } else {
-                    if (!FM.isFault(line)) {
-                        FM.markFault(line);
-                        ffNoteSoftLock(line, chipIdOf(line));
-                        DPRINTF(Cache, "[ScrubChip %d][SOFT] line=%#lx\n", chip, line);
-                    }
+        if (active) {
+            if (is_hard) {
+                if (!FM.isPermanentFault(line)) {
+                    FM.markPermanentFault(line);
+                    ffNoteHardLock(line, chipIdOf(line));
+                    DPRINTF(Cache, "[ScrubChip %d][HARD] line=%#lx\n", chip, line);
                 }
-            } else {
-                if (llcLocked && !llcPerm && FM.isFault(line)) {
+                if (FM.isFault(line)) {
                     FM.unmarkFault(line);
-                    ffNoteUnlock(line, chipIdOf(line));
-                    DPRINTF(Cache, "[ScrubChip %d][UNLOCK] line=%#lx\n", chip, line);
                 }
+            } else {
+                if (!FM.isFault(line)) {
+                    FM.markFault(line);
+                    ffNoteSoftLock(line, chipIdOf(line));
+                    if (meet) meet->onCorrectableError(line);
+                    DPRINTF(Cache, "[ScrubChip %d][SOFT] line=%#lx\n", chip, line);
+                }
+            }
+        } else {
+            if (FM.isFault(line) && !FM.isPermanentFault(line)) {
+                FM.unmarkFault(line);
+                ffNoteUnlock(line, chipIdOf(line));
+                DPRINTF(Cache, "[ScrubChip %d][UNLOCK] line=%#lx\n", chip, line);
             }
         }
     }
+
+    DPRINTF(Cache, "[Scrub] chip-only scan end   chip=%d @%lu\n", chip, curTick());
+
 }
 
 void MemCtrl::ffNoteSoftLock(Addr line, int chip) {
