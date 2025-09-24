@@ -187,6 +187,18 @@ parser.add_argument(
     default=None,
     help="FreeFault/MeET: periodic scrubbing interval (e.g., 6us, 100us)",
 )
+parser.add_argument(
+    "--total-fault-rate",
+    type=int,
+    default=None,
+    help="FreeFault/MeET: 1 in N chance of a total fault on a DRAM access",
+)
+parser.add_argument(
+    "--hard-error-rate",
+    type=int,
+    default=None,
+    help="FreeFault/MeET: 1 in N chance of a hard error on a scrubbed line",
+)
 Options.addCommonOptions(parser)
 Options.addSEOptions(parser)
 
@@ -371,6 +383,10 @@ else:
                 ctrl.ff_inflight_penalty = args.il
             if args.scrub_interval is not None:
                 ctrl.ff_scrub_period = args.scrub_interval
+            if args.total_fault_rate is not None:
+                ctrl.ff_total_fault_rate = args.total_fault_rate
+            if args.hard_error_rate is not None:
+                ctrl.ff_hard_error_rate = args.hard_error_rate
 
 system.workload = SEWorkload.init_compatible(mp0_path)
 
