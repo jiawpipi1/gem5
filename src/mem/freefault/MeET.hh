@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 #include "base/types.hh"
 
 namespace gem5 {
@@ -18,6 +19,7 @@ class MeET
         Tick     intervalTicks       = 5e5;
     };
 
+    
     MeET(memory::MemCtrl* owner, const Params& p);
 
 
@@ -43,6 +45,14 @@ class MeET
     }
     void clearRecentErrorLines(int chip);
 
+    void noteLineHit(Addr line, Addr raw) {
+        lineChipHint[line] = chipIdOf(raw);
+    }
+    int chipHint(Addr line, int fallback) const {
+        auto it = lineChipHint.find(line);
+        return (it == lineChipHint.end()) ? fallback : it->second;
+    }
+
 
     inline Addr lineAlign(Addr a) const { return a & ~(Addr(params.cacheLineBytes - 1)); }
     int    chipIdOf(Addr lineAddr) const;
@@ -54,6 +64,7 @@ class MeET
     Params   params;
 
     std::vector<uint32_t> countPerChip;
+    std::unordered_map<Addr,int> lineChipHint;
     std::vector<bool>                scrubPending;
 
     std::vector<std::unordered_set<Addr>> recentError;

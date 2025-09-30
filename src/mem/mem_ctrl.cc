@@ -120,7 +120,9 @@ MemCtrl::MemCtrl(const MemCtrlParams &p) :
     scrubCostFull        = p.ff_scrub_cost_full;
     scrubCostChip        = p.ff_scrub_cost_chip;
     scrubInflightPenalty = p.ff_inflight_penalty;
-    scrubPeriod          = p.ff_scrub_period;  
+    scrubPeriod          = p.ff_scrub_period;
+    total_fault_rate     = p.ff_total_fault_rate;
+    hard_error_rate      = p.ff_hard_error_rate;
 
     /*
     if (!scrubCostFull)        scrubCostFull = 2000000;  // 2ms¡]Tick¡^
@@ -147,11 +149,11 @@ MemCtrl::startup()
 {
     /*freefault start*/
     DRAMFailureModel::Params ep;
-    ep.use_per_device       = true;                       
-    ep.lambda_dev_per_hour  = 66.1 / 1e9;                 
-    ep.device_mbit          = 128000;                     
-    ep.epoch_ticks          = (Tick) 6e6;                
-    ep.soft_lifetime_ticks  = scrubPeriod/2;                
+    ep.use_per_device       = true;
+    ep.lambda_dev_per_hour  = 66.1 / 1e9;
+    ep.device_mbit          = 128000;
+    ep.epoch_ticks          = (Tick) 6e6;
+    ep.soft_lifetime_ticks  = scrubPeriod/2;
     ep.lines_per_row        = 1024;
     ep.rows_per_bank        = 16384;
     ep.banks_per_rank       = 8;
@@ -180,6 +182,13 @@ MemCtrl::startup()
         }
         DPRINTF(Cache, "[MeET] startup: start interval no=%lu, next tick at %lu (period=%lu)\n",
                         meet->intervalNo(), curTick() + meetIntervalPeriod, meetIntervalPeriod);
+        DPRINTF(Cache, "[MeET] numChips=%u, interleave=%uB\n",
+                        meet->getParams().numChips, meet->getParams().chipInterleaveBytes);
+
+        for (Addr a = 0; a < 512; a += meet->getParams().chipInterleaveBytes) {
+            DPRINTF(Cache, "[MeET] raw=%#lx -> chip=%d\n", a, chipIdOf(a));
+        }
+
     }
     if (!scrubAllEvent.scheduled()){
         schedule(scrubAllEvent, curTick() + scrubPeriod);
@@ -487,6 +496,8 @@ MemCtrl::recvTimingReq(PacketPtr pkt)
              "Should only see read and writes at memory controller\n");
     /*freefault start*/
     if (pkt->isRead()) {
+        stats.total_dram_data_read++;
+        DPRINTF(Cache, "[Inject] In the function\n");
         bool is_hard = false;
         Addr lineAddr = pkt->getAddr() & ~(64 - 1); // cacheline aligned
         DPRINTF(Cache, "[Inject] In the function\n");
@@ -503,7 +514,7 @@ MemCtrl::recvTimingReq(PacketPtr pkt)
             DPRINTF(Cache, "[Inject] No fault injected for"
                 "addr=%#lx\n", pkt->getAddr());
         }
-        
+
     }else {
         DPRINTF(Cache, "[Inject] Not a read, no fault"
         "injected for addr=%#lx\n", pkt->getAddr());
@@ -1386,6 +1397,8 @@ MemCtrl::CtrlStats::CtrlStats(MemCtrl &_ctrl)
                "FreeFault: correctable errors observed by MeET"),
       ADD_STAT(ff_meet_thresholds, statistics::units::Count::get(),
                "FreeFault: MeET threshold crossings (trigger scrub)"),
+      ADD_STAT(total_dram_data_read, statistics::units::Count::get(),
+               "Total number of DRAM data reads (including scrubs)"),
 
       ff_soft_by_chip(this, "ff_soft_by_chip",
                       statistics::units::Count::get(),
@@ -1780,9 +1793,9 @@ static inline bool scrubSeesError()
     return (random() % 100000) == 0; // 1/100
 }
 
-static inline bool scrubSeesErrorLocked()
+static inline bool scrubSeesErrorLocked(int hard_error_rate)
 {
-    return (random() % 10) == 0; // 1/100
+    return (random() % hard_error_rate) == 0; // 1/100
 }
 
 void MemCtrl::scrubAllDRAM()
@@ -1794,7 +1807,8 @@ void MemCtrl::scrubAllDRAM()
     const Addr line_bytes = meet->getParams().cacheLineBytes;
 
     for (Addr a = roundDown(ar.start(), line_bytes); a < ar.end(); a += line_bytes) {
-        const Addr line = a; 
+        stats.total_dram_data_read ++;
+        const Addr line = a;
         bool is_hard = false;
         const bool active = errModel && errModel->activeAt(line, now, is_hard);
         if (active) {
@@ -1807,7 +1821,7 @@ void MemCtrl::scrubAllDRAM()
             } else {
                 if (!FM.isFault(line)) {
                     FM.markFault(line);
-                    ffNoteSoftLock(line, chipIdOf(line)); 
+                    ffNoteSoftLock(line, chipIdOf(line));
                     if (meet) meet->onCorrectableError(line);
                     DPRINTF(Cache, "[Scrub][SOFT] line=%#lx\n", line);
                 }
@@ -1824,9 +1838,9 @@ void MemCtrl::scrubAllDRAM()
     DPRINTF(Cache, "[Scrub] full-DRAM scan end   @%lu\n", curTick());
 }
 
-void MemCtrl::scrubOneChip(int chip)
+void MemCtrl::scrubOneChip(int targetchip)
 {
-    ffNoteScrubChip(chip);
+    ffNoteScrubChip(targetchip);
     auto &FM = gem5::FaultManager::instance();
     const Tick now = curTick();
     const AddrRange ar = dram->getAddrRange();
@@ -1839,6 +1853,7 @@ void MemCtrl::scrubOneChip(int chip)
     };
 
     for (Addr a = roundDown(ar.start(), line_bytes); a < ar.end(); a += line_bytes) {
+        stats.total_dram_data_read ++;
         if (chipOf(a) != (unsigned)chip) continue;
 
         const Addr line = a;

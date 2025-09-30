@@ -61,7 +61,8 @@ void
 MeET::onCorrectableError(Addr physAddr)
 {
     const Addr line = lineAlign(physAddr);
-    const int chip = chipIdOf(line);
+    const int chip = chipIdOf(physAddr);
+    noteLineHit(line, physAddr);
     owner->ffNoteMeetError(line, chip);
     if (chip < 0 || chip >= (int)params.numChips){
         DPRINTF(Cache, "[MeET] interval no: %lu, onCorrectableError"
@@ -73,7 +74,7 @@ MeET::onCorrectableError(Addr physAddr)
     DPRINTF(Cache, "[MeET] interval no: %lu, onCorrectableError"
                     "line=%#lx chip=%d\n",
                     interval_no, line, chip);
-
+    
     incrChipCounter(chip);
     tryTriggerScrub(chip);
 }

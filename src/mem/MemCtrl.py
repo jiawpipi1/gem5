@@ -81,6 +81,12 @@ class MemCtrl(QoSMemCtrl):
     ff_scrub_period = Param.Latency(
         "0ns", "Period between scrubs, 0 means no periodic scrubbing"
     )
+    ff_total_fault_rate = Param.Unsigned(
+        10, "1 in N chance of a total fault on a DRAM access"
+    )
+    ff_hard_error_rate = Param.Unsigned(
+        10, "1 in N chance of a hard error on a scrubbed line"
+    )
     # freefault end
     # single-ported on the system interface side, instantiate with a
     # bus in front of the controller for multiple ports

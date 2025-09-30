@@ -251,6 +251,8 @@ class MemCtrl : public qos::MemCtrl
   protected:
   /*freefault start*/
     Tick scrubPeriod = 0;
+    int total_fault_rate = 10;
+    int hard_error_rate = 10;
     BaseSetAssoc* l2Tags = nullptr;
     void setL2Tags(BaseSetAssoc* tags) { l2Tags = tags; }
 
@@ -668,6 +670,7 @@ class MemCtrl : public qos::MemCtrl
         statistics::Scalar ff_scrub_chip_cnt;  
         statistics::Scalar ff_meet_errors;     
         statistics::Scalar ff_meet_thresholds; 
+        statistics::Scalar total_dram_data_read;
 
         statistics::Vector ff_soft_by_chip;
         statistics::Vector ff_hard_by_chip;
