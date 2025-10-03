@@ -57,6 +57,7 @@
 #include "sim/system.hh"
 #include "mem/freefault/MeET.hh"
 #include "mem/error_model.hh"
+#include "mem/error_model.hh"
 
 namespace gem5
 {
@@ -1854,7 +1855,7 @@ void MemCtrl::scrubOneChip(int targetchip)
 
     for (Addr a = roundDown(ar.start(), line_bytes); a < ar.end(); a += line_bytes) {
         stats.total_dram_data_read ++;
-        if (chipOf(a) != (unsigned)chip) continue;
+        if (chipOf(a) != (unsigned)targetchip) continue;
 
         const Addr line = a;
         bool is_hard = false;
@@ -1865,7 +1866,7 @@ void MemCtrl::scrubOneChip(int targetchip)
                 if (!FM.isPermanentFault(line)) {
                     FM.markPermanentFault(line);
                     ffNoteHardLock(line, chipIdOf(line));
-                    DPRINTF(Cache, "[ScrubChip %d][HARD] line=%#lx\n", chip, line);
+                    DPRINTF(Cache, "[ScrubChip %d][HARD] line=%#lx\n", targetchip, line);
                 }
                 if (FM.isFault(line)) {
                     FM.unmarkFault(line);
@@ -1875,19 +1876,19 @@ void MemCtrl::scrubOneChip(int targetchip)
                     FM.markFault(line);
                     ffNoteSoftLock(line, chipIdOf(line));
                     if (meet) meet->onCorrectableError(line);
-                    DPRINTF(Cache, "[ScrubChip %d][SOFT] line=%#lx\n", chip, line);
+                    DPRINTF(Cache, "[ScrubChip %d][SOFT] line=%#lx\n", targetchip, line);
                 }
             }
         } else {
             if (FM.isFault(line) && !FM.isPermanentFault(line)) {
                 FM.unmarkFault(line);
                 ffNoteUnlock(line, chipIdOf(line));
-                DPRINTF(Cache, "[ScrubChip %d][UNLOCK] line=%#lx\n", chip, line);
+                DPRINTF(Cache, "[ScrubChip %d][UNLOCK] line=%#lx\n", targetchip, line);
             }
         }
     }
 
-    DPRINTF(Cache, "[Scrub] chip-only scan end   chip=%d @%lu\n", chip, curTick());
+    DPRINTF(Cache, "[Scrub] chip-only scan end   chip=%d @%lu\n", targetchip, curTick());
 
 }
 

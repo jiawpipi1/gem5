@@ -68,6 +68,9 @@ SimObject('SerialLink.py', sim_objects=['SerialLink'])
 SimObject('MemDelay.py', sim_objects=['MemDelay', 'SimpleMemDelay'])
 SimObject('PortTerminator.py', sim_objects=['PortTerminator'])
 SimObject('ThreadBridge.py', sim_objects=['ThreadBridge'])
+SimObject('ErrorModel.py', sim_objects=['ErrorModel'])
+
+
 
 Source('abstract_mem.cc')
 Source('addr_mapper.cc')
@@ -114,6 +117,7 @@ GTest('translation_gen.test', 'translation_gen.test.cc')
 Source('translating_port_proxy.cc')
 Source('se_translating_port_proxy.cc')
 Source('page_table.cc')
+Source('error_model.cc')
 
 if env['HAVE_DRAMSIM']:
     SimObject('DRAMSim2.py', sim_objects=['DRAMSim2'])
