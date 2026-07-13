@@ -1,0 +1,85 @@
+# -*- mode:python -*-
+#
+# Ramulator2 integration for gem5.
+#
+# Modelled on ext/dramsim3/SConscript. We do NOT vendor Ramulator2 here: it is
+# its own repo and is already built as a SHARED, position-independent library
+# (libramulator.so, with yaml-cpp/spdlog linked in). We only point gem5 at its
+# headers and link the library.
+#
+# Build Ramulator2 first:
+#     cd ramulator2 && cmake -S . -B build_new && cmake --build build_new -j
+#     -> produces ramulator2/libramulator.so
+#
+# Point gem5 at it either by dropping/symlinking the checkout here as
+# ext/ramulator2/ramulator2, or by setting RAMULATOR2_DIR:
+#     scons build/X86/gem5.opt RAMULATOR2_DIR=/abs/path/to/ramulator2
+#
+# If not found, HAVE_RAMULATOR2 stays False and the gem5-side sources are simply
+# not compiled (see src/mem/SConscript) -- gem5 still builds fine.
+
+import os
+
+Import('env')
+
+def _find_ramulator2():
+    # 1) explicit override
+    d = env.get('RAMULATOR2_DIR', '')
+    if d and os.path.isdir(d):
+        return os.path.abspath(d)
+    # 2) a checkout/symlink dropped in here
+    local = Dir('.').srcnode().abspath + '/ramulator2'
+    if os.path.isdir(local):
+        return os.path.abspath(local)
+    # 3) a sibling checkout next to gem5 (our layout: my_work/{gem5,ramulator2})
+    sibling = os.path.join(Dir('#').abspath, '..', 'ramulator2')
+    if os.path.isdir(sibling):
+        return os.path.abspath(sibling)
+    return None
+
+ram_dir = _find_ramulator2()
+
+if not ram_dir:
+    env['HAVE_RAMULATOR2'] = False
+    print("Ramulator2 not found -- skipping Ramulator2 support. "
+          "(Set RAMULATOR2_DIR=/path/to/ramulator2 to enable.)")
+    Return()
+
+# IMPORTANT: libramulator.so must be built with the SAME toolchain as gem5.
+# The repo-root libramulator.so is built by the system compiler for the
+# standalone ramulator2 binary; linking that into a conda-toolchain gem5 fails
+# with "undefined reference to log2@GLIBC_2.29" (different glibc sysroot).
+# So we prefer a build_gem5/ library built with gem5's own compiler:
+#     cd ramulator2
+#     cmake -S . -B build_gem5 -DCMAKE_CXX_COMPILER=<gem5's g++>
+#     cmake --build build_gem5 -j
+#     mv libramulator.so build_gem5/       # CMake writes it to the source root
+lib_dir = None
+for cand in ('build_gem5', '.', 'build_new', 'build'):
+    if os.path.isfile(os.path.join(ram_dir, cand, 'libramulator.so')):
+        lib_dir = os.path.normpath(os.path.join(ram_dir, cand))
+        break
+
+if lib_dir is None:
+    env['HAVE_RAMULATOR2'] = False
+    print("Ramulator2 found at %s but no libramulator.so. "
+          "Build it first. Skipping Ramulator2 support." % ram_dir)
+    Return()
+
+env['HAVE_RAMULATOR2'] = True
+
+# Ramulator2 vendors its third-party headers under ext/.
+env.Append(
+    CPPPATH=[
+        os.path.join(ram_dir, 'src'),                     # "base/base.h", ...
+        os.path.join(ram_dir, 'ext'),                     # "nlohmann/json.hpp"
+        os.path.join(ram_dir, 'ext', 'yaml-cpp', 'include'),
+        os.path.join(ram_dir, 'ext', 'spdlog', 'include'),
+        os.path.join(ram_dir, 'ext', 'argparse', 'include'),
+    ],
+    LIBS=['ramulator'],
+    LIBPATH=[lib_dir],   # compile-time lookup
+    RPATH=[lib_dir],     # runtime lookup, so no LD_LIBRARY_PATH needed
+)
+
+print("Found Ramulator2 at %s (lib: %s)" % (ram_dir, lib_dir))

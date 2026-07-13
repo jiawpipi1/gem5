@@ -124,6 +124,11 @@ if env['HAVE_DRAMSIM3']:
     Source('dramsim3_wrapper.cc')
     Source('dramsim3.cc')
 
+if env['HAVE_RAMULATOR2']:
+    SimObject('Ramulator2.py', sim_objects=['Ramulator2'])
+    Source('ramulator2_wrapper.cc')
+    Source('ramulator2.cc')
+
 if env['HAVE_DRAMSYS']:
     SimObject('DRAMSys.py', sim_objects=['DRAMSys'])
     Source('dramsys_wrapper.cc')
@@ -160,6 +165,7 @@ DebugFlag('ResponsePort')
 DebugFlag('StackDist')
 DebugFlag("DRAMSim2")
 DebugFlag("DRAMsim3")
+DebugFlag("Ramulator2")
 DebugFlag('HMCController')
 DebugFlag('SerialLink')
 DebugFlag('TokenPort')
