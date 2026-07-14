@@ -142,5 +142,30 @@ Ramulator2Wrapper::printStats()
     static_cast<Ramulator::IMemorySystem *>(memory_system)->finalize();
 }
 
+void
+Ramulator2Wrapper::resetStats()
+{
+    // Scope Ramulator2's counters to the workload's ROI (GAP workbegin), so
+    // row hits/misses/conflicts, DRAM latency, queue occupancy and the repair
+    // and Bloom fast/slow counters describe the kernel rather than the whole
+    // process. Without this they included graph loading -- a long sequential
+    // stream that inflates row-hit rate -- and post-kernel verification.
+    //
+    // reset_stats() lives on Implementation, which both top-level interfaces
+    // also derive from; it recurses into every child (controllers, row
+    // policies, plugins). Clocks are exempt via no_reset().
+    auto *fe = dynamic_cast<Ramulator::Implementation *>(
+        static_cast<Ramulator::IFrontEnd *>(frontend));
+    auto *ms = dynamic_cast<Ramulator::Implementation *>(
+        static_cast<Ramulator::IMemorySystem *>(memory_system));
+    if (fe == nullptr || ms == nullptr) {
+        throw std::runtime_error(
+            "Ramulator2Wrapper::resetStats: top-level object is not an "
+            "Implementation; cannot scope statistics to the ROI.");
+    }
+    fe->reset_stats();
+    ms->reset_stats();
+}
+
 } // namespace memory
 } // namespace gem5

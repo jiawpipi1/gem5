@@ -5,12 +5,18 @@
 
 from m5.objects.AbstractMemory import *
 from m5.params import *
+from m5.util.pybind import PyBindMethod
 
 
 class Ramulator2(AbstractMemory):
     type = "Ramulator2"
     cxx_header = "mem/ramulator2.hh"
     cxx_class = "gem5::memory::Ramulator2"
+
+    # Ramulator2's counters live outside gem5's statistics system. The config
+    # must dump them at a workload ROI boundary (before m5.stats.reset()), or
+    # the only block printed is the post-ROI tail at process exit.
+    cxx_exports = [PyBindMethod("dumpRamulatorStats")]
 
     # A single port, matching DRAMsim3.
     port = ResponsePort(

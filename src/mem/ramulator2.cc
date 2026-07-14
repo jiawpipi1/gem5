@@ -35,7 +35,29 @@ Ramulator2::Ramulator2(const Params &p) :
     // Ramulator2 prints its own stats from finalize() -- including the
     // per-channel repair_{none,layer_a..d} counters, which are the whole point
     // of this integration. gem5 never calls it, so hook it to exit.
-    registerExitCallback([this]() { wrapper.printStats(); });
+    //
+    // NOTE: this exit block covers whatever accumulated since the LAST stats
+    // reset. When the workload has an ROI, that is the post-ROI tail (GAP's
+    // result verification), NOT the kernel. The kernel block is the one the
+    // config dumps at workend via dumpRamulatorStats(). Label both so they can
+    // never be mistaken for each other.
+    registerExitCallback([this]() {
+        std::cout << "\n[w2w] ==== Ramulator2 statistics: SINCE LAST RESET "
+                     "(post-ROI tail if the workload has an ROI; NOT kernel) "
+                     "====" << std::endl;
+        wrapper.printStats();
+    });
+}
+
+void
+Ramulator2::dumpRamulatorStats()
+{
+    // Called from the Python config at GAP workend, BEFORE m5.stats.reset(),
+    // so this block is the kernel ROI. Requests still in flight at the ROI
+    // boundary are attributed the same way gem5 attributes its own counters.
+    std::cout << "\n[w2w] ==== Ramulator2 statistics: ROI (kernel only) ===="
+              << std::endl;
+    wrapper.printStats();
 }
 
 void
@@ -84,6 +106,13 @@ Ramulator2::resetStats()
     // numReads, and related controller counters process-cumulative.
     statistics::Group::resetStats();
     startTick = curTick();
+
+    // Ramulator2 keeps its own counters, which gem5's statistics system knows
+    // nothing about. Reset them on the same boundary, otherwise row-buffer
+    // hit rate, bank conflicts, DRAM latency and the repair/Bloom counters
+    // stay process-cumulative and silently include graph loading and
+    // post-kernel verification.
+    wrapper.resetStats();
 }
 
 void

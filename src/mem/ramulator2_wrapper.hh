@@ -75,6 +75,16 @@ class Ramulator2Wrapper
     /** Print Ramulator2's stats (its finalize()). */
     void printStats();
 
+    /**
+     * Zero Ramulator2's counters to start a new measurement window.
+     *
+     * Called from Ramulator2::resetStats() so that gem5's m5.stats.reset() at
+     * a workload ROI boundary also scopes Ramulator2's own YAML statistics.
+     * Clocks are exempt (they timestamp in-flight requests); the memory system
+     * reports the window length separately as `roi_cycles`.
+     */
+    void resetStats();
+
     double clockPeriod() const { return _clockPeriod; }
     unsigned int burstSize() const { return _burstSize; }
     unsigned int interleaveSize() const { return _interleaveSize; }

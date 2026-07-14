@@ -48,7 +48,8 @@ from m5.objects import (
 
 def resolved_ramulator_config(
         config_path, repair_table, repair_lookup_latency=None,
-        repair_fast_lookup_latency=None, repair_slow_lookup_latency=None):
+        repair_fast_lookup_latency=None, repair_slow_lookup_latency=None,
+        repair_unified_gate=None):
     """Write a per-run config with explicit repair table and latency choices."""
     config_path = os.path.abspath(config_path)
     with open(config_path, "r", encoding="utf-8") as src:
@@ -113,6 +114,11 @@ def resolved_ramulator_config(
     elif repair_fast_lookup_latency is not None:
         replace_int("repair_fast_lookup_latency", repair_fast_lookup_latency)
         replace_int("repair_slow_lookup_latency", repair_slow_lookup_latency)
+
+    if repair_unified_gate is not None:
+        # Whether a Bloom reject is fast even when Layer D relocated the request.
+        replace_int("repair_unified_gate",
+                    "true" if repair_unified_gate else "false")
 
     os.makedirs(m5.options.outdir, exist_ok=True)
     resolved = os.path.abspath(
@@ -182,6 +188,18 @@ def main():
         "--repair-slow-lookup-latency", type=int,
         help="override the dead-bank/Bloom-maybe latency in DRAM cycles",
     )
+    ap.add_argument(
+        "--repair-gate", choices=["unified", "legacy"], default=None,
+        help="unified: a Bloom reject is fast even if Layer D relocated it "
+             "(D reads no repair table). legacy: every dead-bank access pays "
+             "the slow latency (the conservative bracket).",
+    )
+    ap.add_argument(
+        "--l2-size", default="1MB",
+        help="LLC size. Controls how DRAM-bound the kernel is, which is what "
+             "actually sets the repair overhead. Shrink it to make a reduced "
+             "graph as memory-intensive as a full-size one.",
+    )
     ap.add_argument("--cpu-type", default="timing",
                     choices=["atomic", "timing", "o3"])
     ap.add_argument("--maxinsts", type=int, default=0)
@@ -235,7 +253,12 @@ def main():
     system.cpu.icache.mem_side = system.l2bus.cpu_side_ports
     system.cpu.dcache.mem_side = system.l2bus.cpu_side_ports
 
+    # The LLC size sets how DRAM-bound the kernel is, and the repair lookup is
+    # charged per DRAM request -- so overhead tracks L2 misses per instruction,
+    # not graph scale. Shrinking the LLC lets a reduced graph reproduce the
+    # memory intensity of a full-size one. See claude.md S8 "the scale problem".
     system.l2cache = L2()
+    system.l2cache.size = args.l2_size
     system.l2cache.cpu_side = system.l2bus.mem_side_ports
 
     system.membus = SystemXBar()
@@ -257,6 +280,7 @@ def main():
         args.repair_lookup_latency,
         args.repair_fast_lookup_latency,
         args.repair_slow_lookup_latency,
+        None if args.repair_gate is None else (args.repair_gate == "unified"),
     )
     ram_dir = args.ramulator_dir or os.path.dirname(
         os.path.abspath(args.ramulator_config))
@@ -306,6 +330,13 @@ def main():
                 raise RuntimeError("GAP workend without workbegin")
             roi_ticks = m5.curTick() - roi_start
             m5.stats.dump()
+            # Ramulator2's counters are NOT part of gem5's statistics system,
+            # so m5.stats.dump() does not emit them. Dump them here, while they
+            # still hold the ROI, because the m5.stats.reset() on the next line
+            # zeroes them (Ramulator2::resetStats -> wrapper.resetStats). Miss
+            # this ordering and the only Ramulator block printed is the
+            # post-kernel verification tail at process exit.
+            system.mem_ctrl.dumpRamulatorStats()
             m5.stats.reset()
             print(f"[w2w] ROI {roi_count} end   @ tick {m5.curTick()} "
                   f"({roi_ticks} ticks)")

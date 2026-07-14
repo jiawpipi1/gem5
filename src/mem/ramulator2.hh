@@ -137,6 +137,17 @@ class Ramulator2 : public AbstractMemory
 
     void resetStats() override;
 
+    /**
+     * Emit Ramulator2's YAML statistics for the current measurement window.
+     *
+     * Exported to Python so the config can dump them at a workload ROI
+     * boundary (GAP workend) BEFORE m5.stats.reset() clears them. Ramulator2
+     * keeps its own counters outside gem5's statistics system, so without this
+     * the only block ever printed is the one at process exit -- which, once
+     * ROI resets exist, contains the post-kernel verification tail.
+     */
+    void dumpRamulatorStats();
+
   protected:
     Tick recvAtomic(PacketPtr pkt);
     void recvFunctional(PacketPtr pkt);
