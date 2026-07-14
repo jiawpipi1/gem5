@@ -78,6 +78,11 @@ Ramulator2::startup()
 void
 Ramulator2::resetStats()
 {
+    // Reset this SimObject's gem5 statistics groups (including
+    // AbstractMemory::MemStats) before starting a new measurement interval.
+    // Without this call, m5.stats.reset() at GAP workbegin left bytesRead,
+    // numReads, and related controller counters process-cumulative.
+    statistics::Group::resetStats();
     startTick = curTick();
 }
 
