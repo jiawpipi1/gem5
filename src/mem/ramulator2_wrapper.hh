@@ -35,6 +35,7 @@ class Ramulator2Wrapper
 
     double _clockPeriod;     ///< DRAM clock period in ns (from Ramulator's tCK)
     unsigned int _burstSize; ///< bytes per transaction
+    unsigned int _interleaveSize; ///< LineRoBaRaCoCh line_size, or 0
 
     /// Called by Ramulator2 when a request completes.
     std::function<void(uint64_t, bool)> complete_cb;
@@ -76,6 +77,7 @@ class Ramulator2Wrapper
 
     double clockPeriod() const { return _clockPeriod; }
     unsigned int burstSize() const { return _burstSize; }
+    unsigned int interleaveSize() const { return _interleaveSize; }
 };
 
 } // namespace memory

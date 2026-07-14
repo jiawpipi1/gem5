@@ -22,6 +22,7 @@ second half is a row-buffer hit -- exactly what a real memory controller does.
 
 import argparse
 import os
+import shlex
 
 import m5
 from m5.objects import (
@@ -144,7 +145,7 @@ def main():
     # -- workload
     system.workload = SEWorkload.init_compatible(args.cmd)
     process = Process()
-    process.cmd = [args.cmd] + (args.options.split() if args.options else [])
+    process.cmd = [args.cmd] + (shlex.split(args.options) if args.options else [])
     system.cpu.workload = process
     system.cpu.createThreads()
 

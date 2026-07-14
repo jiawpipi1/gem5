@@ -56,6 +56,16 @@ Ramulator2::init()
               "transaction size %d.\n",
               system()->cacheLineSize(), wrapper.burstSize());
     }
+    if (system()->cacheLineSize() == 0 ||
+        (system()->cacheLineSize() & (system()->cacheLineSize() - 1)) != 0) {
+        fatal("Ramulator2: cache line size must be a positive power of two.\n");
+    }
+    if (wrapper.interleaveSize() != 0 &&
+        system()->cacheLineSize() != wrapper.interleaveSize()) {
+        fatal("Ramulator2: gem5 cache line size %d does not match "
+              "LineRoBaRaCoCh line_size %d in the Ramulator config.\n",
+              system()->cacheLineSize(), wrapper.interleaveSize());
+    }
 }
 
 void
@@ -95,6 +105,9 @@ Ramulator2::tick()
         if (retryReq && pendingSends.empty()) {
             retryReq = false;
             port.sendRetryReq();
+        }
+        if (nbrOutstanding() == 0 && wrapper.isEmpty()) {
+            signalDrainDone();
         }
     }
 
@@ -168,17 +181,18 @@ Ramulator2::recvTimingReq(PacketPtr pkt)
         state = std::make_shared<PacketState>();
         state->pkt = pkt;
         state->remaining = count;
+        // This packet is committed even if Ramulator rejects the first or a
+        // later subtransaction. Register every completion before enqueueing so
+        // pendingSends can never produce an unmatchable callback.
+        for (unsigned i = 0; i < count; ++i) {
+            const Addr sub = base + i * burst;
+            outstandingReads[sub].push(state);
+            ++nbrOutstandingReads;
+        }
     }
 
     for (unsigned i = 0; i < count; i++) {
         const Addr sub = base + i * burst;
-
-        if (!is_write) {
-            // Register before enqueueing: completions only fire from inside
-            // wrapper.tick(), so this cannot race.
-            outstandingReads[sub].push(state);
-            ++nbrOutstandingReads;
-        }
 
         if (!wrapper.enqueue(sub, is_write)) {
             // Queue full mid-split: we have committed to this packet, so
@@ -189,7 +203,6 @@ Ramulator2::recvTimingReq(PacketPtr pkt)
             for (unsigned j = i; j < count; j++) {
                 pendingSends.emplace_back(base + j * burst, is_write);
             }
-            retryReq = true;
             break;
         }
     }
@@ -257,7 +270,7 @@ Ramulator2::sendResponse()
             schedule(sendResponseEvent, curTick());
         }
 
-        if (nbrOutstanding() == 0) {
+        if (nbrOutstanding() == 0 && wrapper.isEmpty()) {
             signalDrainDone();
         }
     } else {
@@ -310,7 +323,7 @@ Ramulator2::requestComplete(uint64_t addr, bool is_write)
     // If accessAndRespond queued a response, nbrOutstanding() is non-zero and
     // the drain completes from sendResponse() instead. (signalDrainDone is a
     // no-op unless a drain is in progress.)
-    if (nbrOutstanding() == 0) {
+    if (nbrOutstanding() == 0 && wrapper.isEmpty()) {
         signalDrainDone();
     }
 }
@@ -329,7 +342,7 @@ Ramulator2::drain()
 {
     // Writes are posted and untracked (Ramulator2 has no write callbacks), so
     // draining covers reads, queued responses and not-yet-enqueued splits.
-    if (nbrOutstanding() != 0) {
+    if (nbrOutstanding() != 0 || !wrapper.isEmpty()) {
         DPRINTF(Drain, "Ramulator2 draining: %d outstanding\n",
                 nbrOutstanding());
         return DrainState::Draining;

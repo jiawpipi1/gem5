@@ -33,7 +33,7 @@ Ramulator2Wrapper::Ramulator2Wrapper(
         const std::string &working_dir,
         std::function<void(uint64_t, bool)> cb)
     : frontend(nullptr), memory_system(nullptr),
-      _clockPeriod(0.0), _burstSize(0), complete_cb(cb)
+      _clockPeriod(0.0), _burstSize(0), _interleaveSize(0), complete_cb(cb)
 {
     // Ramulator2 resolves some paths (e.g. the repair table) relative to CWD.
     if (!working_dir.empty()) {
@@ -46,6 +46,12 @@ Ramulator2Wrapper::Ramulator2Wrapper(
     std::vector<std::string> no_overrides;
     YAML::Node config =
         Ramulator::Config::parse_config_file(config_file, no_overrides);
+    const auto mapper = config["MemorySystem"]["AddrMapper"];
+    if (mapper && mapper["impl"] &&
+        mapper["impl"].as<std::string>() == "LineRoBaRaCoCh") {
+        _interleaveSize = mapper["line_size"]
+                        ? mapper["line_size"].as<unsigned int>() : 64;
+    }
 
     auto *fe = Ramulator::Factory::create_frontend(config);
     auto *ms = Ramulator::Factory::create_memory_system(config);
@@ -71,11 +77,14 @@ Ramulator2Wrapper::Ramulator2Wrapper(
     }
     _clockPeriod = static_cast<double>(tCK);
 
-    // Ramulator2 does not expose a transaction size directly. For HBM3 the
-    // access granularity is prefetch x channel_width/8 = 2 x 128/8 = 32 B.
-    // gem5's cache line is what actually drives request size, so this is only
-    // used for a sanity warning in ramulator2.cc.
-    _burstSize = 32;
+    // Derive the transaction size from the selected DRAM organization so the
+    // gem5 path remains parameter-driven for non-HBM W2W geometries.
+    const int tx = ms->get_transaction_size();
+    if (tx <= 0 || (tx & (tx - 1)) != 0) {
+        throw std::runtime_error(
+            "Ramulator2Wrapper: DRAM transaction size must be a positive power of two");
+    }
+    _burstSize = static_cast<unsigned int>(tx);
 }
 
 Ramulator2Wrapper::~Ramulator2Wrapper()
