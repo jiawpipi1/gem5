@@ -16,7 +16,7 @@ Usage:
         --repair-table none|/path/to/production.json \
         [--repair-lookup-latency DRAM_CYCLES] \
         [--repair-fast-lookup-latency N --repair-slow-lookup-latency N] \
-        [--cpu-type atomic|timing|o3] [--maxinsts N]
+        [--cpu-type atomic|timing|o3] [--maxinsts N] [--exit-after-roi]
 
 The cache line is 64 B (the x86 norm). The Ramulator2 controller in gem5
 splits each line into cacheLineSize / 32 B = 2 HBM3 transactions, and the
@@ -200,6 +200,13 @@ def main():
              "actually sets the repair overhead. Shrink it to make a reduced "
              "graph as memory-intensive as a full-size one.",
     )
+    ap.add_argument(
+        "--exit-after-roi", action="store_true",
+        help="stop immediately after the first completed ROI. This preserves "
+             "ROI ticks/statistics but intentionally skips any benchmark-side "
+             "post-ROI verifier; use only for sweeps whose binary/input pair "
+             "has already completed a verified run.",
+    )
     ap.add_argument("--cpu-type", default="timing",
                     choices=["atomic", "timing", "o3"])
     ap.add_argument("--maxinsts", type=int, default=0)
@@ -342,6 +349,9 @@ def main():
                   f"({roi_ticks} ticks)")
             roi_count += 1
             roi_start = None
+            if args.exit_after_roi:
+                print("[w2w] ROI-only mode: stopping before the post-ROI verifier")
+                break
             continue
         break
 
