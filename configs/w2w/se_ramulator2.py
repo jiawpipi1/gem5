@@ -16,6 +16,7 @@ Usage:
         --repair-table none|/path/to/production.json \
         [--repair-lookup-latency DRAM_CYCLES] \
         [--repair-fast-lookup-latency N --repair-slow-lookup-latency N] \
+        [--repair-d-mapping spread|clustered] \
         [--cpu-type atomic|timing|o3] [--maxinsts N] [--exit-after-roi]
 
 The cache line is 64 B (the x86 norm). The Ramulator2 controller in gem5
@@ -49,7 +50,7 @@ from m5.objects import (
 def resolved_ramulator_config(
         config_path, repair_table, repair_lookup_latency=None,
         repair_fast_lookup_latency=None, repair_slow_lookup_latency=None,
-        repair_unified_gate=None):
+        repair_unified_gate=None, repair_d_mapping=None):
     """Write a per-run config with explicit repair table and latency choices."""
     config_path = os.path.abspath(config_path)
     with open(config_path, "r", encoding="utf-8") as src:
@@ -119,6 +120,11 @@ def resolved_ramulator_config(
         # Whether a Bloom reject is fast even when Layer D relocated the request.
         replace_int("repair_unified_gate",
                     "true" if repair_unified_gate else "false")
+
+    if repair_d_mapping is not None:
+        # spread is the published/original default. clustered is opt-in and
+        # changes only Layer-D placement within the same vacuum capacity budget.
+        replace_int("repair_d_mapping", repair_d_mapping)
 
     os.makedirs(m5.options.outdir, exist_ok=True)
     resolved = os.path.abspath(
@@ -193,6 +199,12 @@ def main():
         help="unified: a Bloom reject is fast even if Layer D relocated it "
              "(D reads no repair table). legacy: every dead-bank access pays "
              "the slow latency (the conservative bracket).",
+    )
+    ap.add_argument(
+        "--repair-d-mapping", choices=["spread", "clustered"], default=None,
+        help="Layer-D placement policy. spread preserves the published/original "
+             "mapping; clustered assigns exclusive targets balanced across "
+             "the full live-bank list and uses vacuum_limit-row chunks.",
     )
     ap.add_argument(
         "--l2-size", default="1MB",
@@ -288,6 +300,7 @@ def main():
         args.repair_fast_lookup_latency,
         args.repair_slow_lookup_latency,
         None if args.repair_gate is None else (args.repair_gate == "unified"),
+        args.repair_d_mapping,
     )
     ram_dir = args.ramulator_dir or os.path.dirname(
         os.path.abspath(args.ramulator_config))
@@ -318,6 +331,8 @@ def main():
               f"slow {args.repair_slow_lookup_latency} DRAM cycles")
     else:
         print("[w2w] repair lookup     : template fast/slow values")
+    print("[w2w] Layer-D mapping   : "
+          f"{args.repair_d_mapping or 'template default (spread)'}")
     print(f"[w2w] cache line size   : {args.cache_line_size} B")
     print(f"[w2w] beginning simulation ({args.cpu_type} CPU)")
     roi_start = None
